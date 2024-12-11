@@ -170,7 +170,7 @@ def style_transfer_batch(content_imgs, style_imgs, model, steps=2000, style_weig
 
 # Load content and style images
 content = torch.stack([load_image('./imgs/Content.jpg') for _ in range(8)]).to(device)
-style = torch.stack([load_image('./imgs/Style.jpg') for _ in range(8)]).to(device)
+style = torch.stack([load_image('./imgs/Style_2.jpg') for _ in range(8)]).to(device)
 # Load VGG model
 vgg = get_vgg()
 
