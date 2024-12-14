@@ -2,12 +2,15 @@ import torch
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import os
+import numpy as np
 
 #import functions for performing 2D Style Transfer
 from style_transfer import load_image, style_transfer, get_vgg, tensor_to_image
 
 #import transforms
 from torchvision import transforms
+
+from PIL import Image
 
 #import loading of mesh / obj
 from pytorch3d.io import load_objs_as_meshes, load_obj
@@ -39,10 +42,13 @@ verts_uvs = aux.verts_uvs[None, ...]  # (1, V, 2)
 faces_uvs = faces.textures_idx[None, ...]  # (1, F, 3)
 tex_maps = aux.texture_images
 
+verts_uvs = verts_uvs.to(device)
+faces_uvs = faces_uvs.to(device)
+
 # tex_maps is a dictionary of {material name: texture image}.
 # Take the first image:
 texture_image = list(tex_maps.values())[0]
-texture_image = texture_image[None, ...]  # (1, H, W, 3)
+texture_image = texture_image[None, ...].to(device)  # (1, H, W, 3)
 
 # Create a textures object
 original_textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=texture_image)
@@ -74,7 +80,7 @@ renderer = MeshRenderer(
 )
 
 #take the style_image
-style_image_path = "./imgs/Style_2.jpg"
+style_image_path = "./imgs/Style_1.jpg"
 style_image = load_image(style_image_path).unsqueeze(0)
 
 # Load VGG model
@@ -109,7 +115,7 @@ for i, angle in enumerate(angles):
     # content_image = (content_image - content_image.min()) / (content_image.max() - content_image.min())  # Normalize
 
     # Perform style transfer on the masked cow image
-    styled_image = style_transfer(content_image, style_image, vgg, steps=1)
+    styled_image = style_transfer(content_image, style_image, vgg, steps=500)
 
     # Use styled image as target for texture optimization
     styled_image_np = tensor_to_image(styled_image)
@@ -118,7 +124,7 @@ for i, angle in enumerate(angles):
     # Convert styled image back to tensor for texture optimization
     styled_image_tensor = transforms.ToTensor()(styled_image_np).unsqueeze(0).to(device)
 
-    for step in range(2):
+    for step in range(200):
         optimizer.zero_grad()
         
         current_cow_mesh.textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=texture_map)
@@ -131,9 +137,25 @@ for i, angle in enumerate(angles):
 
 optimized_cow_mesh = current_cow_mesh #final
 
-fig = plot_scene({
-    "subplot1": {
-        "cow_mesh": optimized_cow_mesh
-    }
-})
-fig.show()
+# Loop over each viewpoint and render the image
+for i, angle in enumerate(angles):
+    axis = rotation_axes[i % len(rotation_axes)]  # Choose the axis for rotation
+    R = RotateAxisAngle(angle, axis=axis, device=device).get_matrix()[..., :3, :3]  # Get the 3x3 rotation matrix
+    T = torch.tensor([[0.0, 0.0, 3.0]], device=device)  # Translation vector (camera position)
+    cameras = FoVPerspectiveCameras(R=R, T=T, device=device)
+
+    # Render the optimized cow mesh from the current viewpoint
+    image = renderer(meshes_world=optimized_cow_mesh, cameras=cameras, lights=lights)[0, ..., :3].unsqueeze(0)
+
+    # Convert the image from tensor to NumPy array
+    image_np = image.squeeze(0).detach().cpu().numpy()  # Convert to NumPy array on CPU
+
+    # Normalize the image if needed (optional)
+    # image_np = (image_np - image_np.min()) / (image_np.max() - image_np.min())  # Normalize to [0, 1] if needed
+
+    # Convert the image to PIL format
+    image_pil = Image.fromarray((image_np * 255).astype(np.uint8))  # Convert to uint8 format for saving
+
+    # Save the image for the current viewpoint
+    image_pil.save(f"rendered_optimized_cow_view_{i}.png")  # Save the image with a unique name
+    print(f"Saved image for view {i}")
