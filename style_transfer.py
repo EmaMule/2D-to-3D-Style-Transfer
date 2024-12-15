@@ -76,7 +76,6 @@ def style_transfer(content_imgs, style_imgs, model, steps=2000, style_weight=1e6
 
     # Ensure content_imgs and style_imgs are batched tensors
     assert content_imgs.shape[0] == style_imgs.shape[0], "Batch sizes of content and style images must match."
-    batch_size = content_imgs.shape[0]
 
     # Extract features for content and style images
     content_features = get_features(content_imgs, model)
@@ -119,29 +118,26 @@ def style_transfer(content_imgs, style_imgs, model, steps=2000, style_weight=1e6
         total_loss.backward()
         optimizer.step()
 
-        if step % 100 == 0:
-            print(f"Step {step}, Total loss: {total_loss.item() / batch_size}")
-
     return targets
 
 
-# # Load content and style images
-# content = torch.stack([load_image('./imgs/Content.jpg') for _ in range(3)]).to(device)
-# style = torch.stack([load_image('./imgs/Style_1.jpg'), load_image('./imgs/Style_2.jpg'), load_image('./imgs/Style_3.jpg')]).to(device)
-# # Load VGG model
-# vgg = get_vgg()
+# Load content and style images
+content = torch.stack([load_image('./imgs/Content.jpg') for _ in range(3)]).to(device)
+style = torch.stack([load_image('./imgs/Style_1.jpg'), load_image('./imgs/Style_2.jpg'), load_image('./imgs/Style_3.jpg')]).to(device)
+# Load VGG model
+vgg = get_vgg()
 
-# # Perform style transfer
-# output = style_transfer(content, style, vgg, steps = 2000)
+# Perform style transfer
+output = style_transfer(content, style, vgg, steps = 8000, style_weight=10e4, content_weight=10)
 
-# # Display the result
-# # Save and display each result in the batch
-# for i, img in enumerate(output):
-#     result = tensor_to_image(img)
-#     plt.figure()
-#     plt.imshow(result)
-#     plt.axis('off')
-#     plt.show()
+# Display the result
+# Save and display each result in the batch
+for i, img in enumerate(output):
+    result = tensor_to_image(img)
+    plt.figure()
+    plt.imshow(result)
+    plt.axis('off')
+    plt.show()
 
-#     # Save the output
-#     result.save(f'output_{i}.jpg')
+    # Save the output
+    result.save(f'output_{i}.jpg')
