@@ -72,10 +72,10 @@ def gram_matrix(tensor):
     gram = torch.bmm(tensor, tensor.transpose(1, 2))  # Batch matrix multiplication.
     return gram
 
-def style_transfer(content_imgs, style_imgs, model, steps=2000, style_weight=1e6, content_weight=1):
+def style_transfer(optim_imgs, content_imgs, style_imgs, model, steps=2000, style_weight=1e6, content_weight=1):
 
     # Ensure content_imgs and style_imgs are batched tensors
-    assert content_imgs.shape[0] == style_imgs.shape[0], "Batch sizes of content and style images must match."
+    assert optim_imgs.shape[0] == content_imgs.shape[0] == style_imgs.shape[0], "Batch sizes of content and style images must match."
 
     # Extract features for content and style images
     content_features = get_features(content_imgs, model)
@@ -86,14 +86,14 @@ def style_transfer(content_imgs, style_imgs, model, steps=2000, style_weight=1e6
     # Calculate style Gram matrices for each image in the batch
     style_grams = {layer: gram_matrix(style_features[layer]) for layer in style_features}
 
-    # Initialize target images as copies of content images
-    targets = content_imgs.clone().requires_grad_(True).to(device)
+    # Initialize target images  --> the ones to optimize
+    targets = optim_imgs.clone().detach().requires_grad_(True).to(device)
+
 
     # Define optimizer
     optimizer = optim.Adam([targets], lr=0.003)
 
     for step in tqdm(range(steps)):
-        total_loss = 0
 
         # Extract features for current target batch
         targets_features = get_features(targets, model)
@@ -110,8 +110,7 @@ def style_transfer(content_imgs, style_imgs, model, steps=2000, style_weight=1e6
             style_loss += layer_style_loss / (target_feature.shape[1] ** 2 * target_feature.shape[2] ** 2)
 
         # Total loss for this image
-        image_loss = content_weight * content_loss + style_weight * style_loss
-        total_loss += image_loss
+        total_loss = content_weight * content_loss + style_weight * style_loss
 
         # Backpropagation and optimization
         optimizer.zero_grad()
@@ -121,23 +120,23 @@ def style_transfer(content_imgs, style_imgs, model, steps=2000, style_weight=1e6
     return targets
 
 
-# Load content and style images
-content = torch.stack([load_image('./imgs/Content.jpg') for _ in range(3)]).to(device)
-style = torch.stack([load_image('./imgs/Style_1.jpg'), load_image('./imgs/Style_2.jpg'), load_image('./imgs/Style_3.jpg')]).to(device)
-# Load VGG model
-vgg = get_vgg()
+# # Load content and style images
+# content = torch.stack([load_image('./imgs/Content.jpg') for _ in range(3)]).to(device)
+# style = torch.stack([load_image('./imgs/Style_1.jpg'), load_image('./imgs/Style_2.jpg'), load_image('./imgs/Style_3.jpg')]).to(device)
+# # Load VGG model
+# vgg = get_vgg()
 
-# Perform style transfer
-output = style_transfer(content, style, vgg, steps = 8000, style_weight=10e4, content_weight=10)
+# # Perform style transfer
+# output = style_transfer(content, style, vgg, steps = 8000, style_weight=10e4, content_weight=10)
 
-# Display the result
-# Save and display each result in the batch
-for i, img in enumerate(output):
-    result = tensor_to_image(img)
-    plt.figure()
-    plt.imshow(result)
-    plt.axis('off')
-    plt.show()
+# # Display the result
+# # Save and display each result in the batch
+# for i, img in enumerate(output):
+#     result = tensor_to_image(img)
+#     plt.figure()
+#     plt.imshow(result)
+#     plt.axis('off')
+#     plt.show()
 
-    # Save the output
-    result.save(f'output_{i}.jpg')
+#     # Save the output
+#     result.save(f'output_{i}.jpg')
