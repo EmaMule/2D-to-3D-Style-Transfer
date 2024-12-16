@@ -1,0 +1,3 @@
+# Ignore PNG files only in the current folder (root directory)
+/*.png
+
