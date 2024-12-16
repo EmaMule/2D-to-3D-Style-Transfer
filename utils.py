@@ -3,6 +3,8 @@ import torch.nn as nn
 from torchvision import transforms, models
 from PIL import Image
 import os
+from pytorch3d.transforms import RotateAxisAngle
+from pytorch3d.renderer import FoVPerspectiveCameras
 
 
 # Helper function to blend image with background
