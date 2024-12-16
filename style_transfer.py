@@ -53,7 +53,7 @@ def style_transfer(initial_optimized_imgs, content_imgs, style_imgs, model, step
 
     # Calculate style Gram matrices for each image in the batch
     style_grams = {layer: gram_matrix(style_features[layer]) for layer in style_features}
-    style_gram.pop('conv4_2')
+    style_grams.pop('conv4_2')
 
     # Initialize target images  --> the ones to optimize
     optimized_imgs = initial_optimized_imgs.clone().detach().requires_grad_(True).to(device)

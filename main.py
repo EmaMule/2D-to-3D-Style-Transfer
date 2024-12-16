@@ -7,14 +7,14 @@ from PIL import Image
 
 # Import style transfer utilities
 from style_transfer import style_transfer
-from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes
+from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes, save_render
 
 from torchvision import transforms
 
 # Import PyTorch3D utilities
 from pytorch3d.io import load_obj
 from pytorch3d.structures import Meshes
-from pytorch3d.renderer import TexturesUV, FoVPerspectiveCameras, RasterizationSettings, MeshRenderer, MeshRasterizer, SoftPhongShader, PointLights
+from pytorch3d.renderer import TexturesUV, FoVPerspectiveCameras, RasterizationSettings, MeshRenderer, MeshRasterizer, SoftPhongShader, PointLights, AmbientLights
 from pytorch3d.transforms import RotateAxisAngle
 
 import argparse
@@ -30,6 +30,7 @@ parser.add_argument("--style_path", default="./imgs/Style_1.jpg", type=str, help
 parser.add_argument("--style_weight", default=1e6, type=float, help="Weight of the style loss")
 parser.add_argument("--content_weight", default=1.0, type=float, help="Weight of the content loss")
 parser.add_argument("--size", default=512, type=int, help="Dimension of the images")
+parser.add_argument("--output_path", default="/content/output", type=str, help="Output folder path")
 args = parser.parse_args()
 
 # Parse arguments
@@ -42,9 +43,13 @@ use_background = args.use_background
 content_weight = args.content_weight
 style_weight = args.style_weight
 size = args.size
+output_path = args.output_path
 
 # Other Parameters
 learning_rate = 0.01
+
+# Create output folder
+os.makedirs(output_path, exist_ok=True)
 
 # Set device (use GPU if available)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -62,17 +67,8 @@ content_cow_mesh = Meshes(verts=[verts.to(device)], faces=[faces.verts_idx.to(de
 # Camera, rasterization, and lighting settings
 cameras = FoVPerspectiveCameras(device=device)
 raster_settings = RasterizationSettings(image_size=size, blur_radius=0.0, faces_per_pixel=1)
-lights = PointLights(
-    device=device, 
-    location=[
-        [0.0, 0.0, 3.0],
-        [0.0, 0.0, -3.0],
-        [3.0, 0.0, 0.0],
-        [-3.0, 0.0, 0.0],
-        [0.0, 3.0, 0.0],
-        [0.0, -3.0, 0.0]
-    ]
-)
+# try AmbientLights instead!
+lights = PointLights(device=device, location=[[0.0, 0.0, 3.0]])
 
 # Create a renderer
 renderer = MeshRenderer(
@@ -122,7 +118,7 @@ for i, (angle, axis) in enumerate(angles):
 
     # Save the styled image
     applied_style_image = tensor_to_image(applied_style_tensor)
-    applied_style_image.save(f"applied_style_image_view_{i}.png")
+    applied_style_image.save(output_path+f"/2d_style_transfer/view_{i}.png")
 
     # Optimize the texture to match the styled image
     for step in range(n_mse_steps):
@@ -141,17 +137,10 @@ for i, (angle, axis) in enumerate(angles):
         optimizer.step()
 
         print(f"View {i}, Step {step}, Loss: {loss.item()}")
+    
+    save_render(renderer, angles, current_cow_mesh, output_path+f"/iteration_{i}")
+
 
 # Save final optimized images
 optimized_cow_mesh = current_cow_mesh
-for i, (angle, axis) in enumerate(angles):
-    R = RotateAxisAngle(angle, axis=axis, device=device).get_matrix()[..., :3, :3]
-    T = torch.tensor([[0.0, 0.0, 3.0]], device=device)
-    cameras = FoVPerspectiveCameras(R=R, T=T, device=device)
-
-    # Render optimized mesh
-    tensor, _ = render_meshes(renderer, optimized_cow_mesh, cameras)
-    image = tensor_to_image(tensor)
-
-    image.save(f"rendered_optimized_cow_view_{i}.png")
-    print(f"Saved image for view {i}")
+save_render(renderer, angles, optimized_cow_mesh, output_path+"/final_render")
