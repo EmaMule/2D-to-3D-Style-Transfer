@@ -7,6 +7,8 @@ from PIL import Image
 
 # Import style transfer utilities
 from style_transfer import load_image, style_transfer, get_vgg, tensor_to_image
+from utils import apply_background
+
 from torchvision import transforms
 
 # Import PyTorch3D utilities
@@ -66,6 +68,7 @@ renderer = MeshRenderer(
 # Load style image and VGG model
 style_image = load_image(style_image_path).unsqueeze(0).to(device)
 style_image_resized = transforms.Resize((512, 512))(style_image)  # Style image as background
+
 vgg = get_vgg()
 
 # Define angles for viewpoints
@@ -79,10 +82,6 @@ texture_map = current_cow_mesh.textures.maps_padded()
 texture_map.requires_grad = True
 optimizer = torch.optim.Adam([texture_map], lr=0.01)
 
-# Helper function to blend image with background
-def apply_background(rendered_image, mask, background):
-    return rendered_image * mask + background * (1 - mask)
-
 # Render and optimize for each viewpoint
 for i, (angle, axis) in enumerate(angles):
     # Set up camera rotation
@@ -93,7 +92,8 @@ for i, (angle, axis) in enumerate(angles):
     # Render the content image
     rendered_content_out = renderer(meshes_world=content_cow_mesh, cameras=cameras, lights=lights)
     content_image = rendered_content_out[0, ..., :3].permute(2, 0, 1).unsqueeze(0)  # (1, 3, H, W)
-    object_mask = (content_image > 0).float()  # Binary mask
+    alpha_channel = rendered_content_out[0, ..., 3]  # Get the alpha channel
+    object_mask = (alpha_channel > 0).float()  # Binary mask based on transparency
 
     if use_background == 2:
         content_image = apply_background(content_image, object_mask, style_image_resized)
@@ -123,7 +123,8 @@ for i, (angle, axis) in enumerate(angles):
         rendered_output = renderer(meshes_world=current_cow_mesh, cameras=cameras, lights=lights)
 
         rendered_image = rendered_output[0, ..., :3].permute(2, 0, 1).unsqueeze(0)
-        object_mask = (rendered_output[0, ..., 3] > 0).float().unsqueeze(0).unsqueeze(0)
+        alpha_channel = rendered_output[0, ..., 3]  # Get the alpha channel
+        object_mask = (alpha_channel > 0).float()  # Binary mask based on transparency
 
         # Compute loss with the mask applied
         masked_rendered = rendered_image * object_mask

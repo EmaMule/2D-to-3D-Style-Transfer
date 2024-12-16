@@ -23,7 +23,7 @@ def load_image(image_path, max_size=512):
     transform = transforms.Compose([
         transforms.Resize((size, size)),
         transforms.ToTensor(),
-        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+        #transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
     ])
 
     image = transform(image)[:3, :, :]
@@ -33,7 +33,7 @@ def load_image(image_path, max_size=512):
 def tensor_to_image(tensor):
     image = tensor.clone().detach()
     image = image.squeeze(0)  # Remove batch dimension
-    image = image * torch.tensor([0.229, 0.224, 0.225], device=device).view(3, 1, 1) + torch.tensor([0.485, 0.456, 0.406], device = device).view(3, 1, 1)
+    #image = image * torch.tensor([0.229, 0.224, 0.225], device=device).view(3, 1, 1) + torch.tensor([0.485, 0.456, 0.406], device = device).view(3, 1, 1)
     image = image.clamp(0, 1)
     image = transforms.ToPILImage()(image.cpu())
     return image
