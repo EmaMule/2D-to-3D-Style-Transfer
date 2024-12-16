@@ -47,6 +47,7 @@ output_path = args.output_path
 
 # Other Parameters
 learning_rate = 0.01
+style_transfer_lr = 0.003
 
 # Create output folder
 os.makedirs(output_path, exist_ok=True)
@@ -115,7 +116,7 @@ for i, (angle, axis) in enumerate(angles):
 
     # Perform style transfer
     applied_style_tensor = style_transfer(current_tensor, content_tensor, style_tensor, vgg, steps=n_style_transfer_steps,
-                                  style_weight=style_weight, content_weight=content_weight)
+                                  style_weight=style_weight, content_weight=content_weight, lr=style_transfer_lr)
 
     # Save the styled image
     applied_style_image = tensor_to_image(applied_style_tensor)
