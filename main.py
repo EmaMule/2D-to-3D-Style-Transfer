@@ -6,8 +6,8 @@ import numpy as np
 from PIL import Image
 
 # Import style transfer utilities
-from style_transfer import load_image, style_transfer, get_vgg, tensor_to_image
-from utils import apply_background
+from style_transfer import style_transfer
+from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes
 
 from torchvision import transforms
 
@@ -29,6 +29,7 @@ parser.add_argument("--obj_path", default="./objects/cow_mesh/cow.obj", type=str
 parser.add_argument("--style_path", default="./imgs/Style_1.jpg", type=str, help="Path to the style image")
 parser.add_argument("--style_weight", default=1e6, type=float, help="Weight of the style loss")
 parser.add_argument("--content_weight", default=1.0, type=float, help="Weight of the content loss")
+parser.add_argument("--size", default=512, type=int, help="Dimension of the images")
 args = parser.parse_args()
 
 # Parse arguments
@@ -40,6 +41,10 @@ n_style_transfer_steps = args.n_style_transfer_steps
 use_background = args.use_background
 content_weight = args.content_weight
 style_weight = args.style_weight
+size = args.size
+
+# Other Parameters
+learning_rate = 0.01
 
 # Set device (use GPU if available)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -56,8 +61,18 @@ content_cow_mesh = Meshes(verts=[verts.to(device)], faces=[faces.verts_idx.to(de
 
 # Camera, rasterization, and lighting settings
 cameras = FoVPerspectiveCameras(device=device)
-raster_settings = RasterizationSettings(image_size=512, blur_radius=0.0, faces_per_pixel=1)
-lights = PointLights(device=device, location=[[0.0, 0.0, 3.0]])
+raster_settings = RasterizationSettings(image_size=size, blur_radius=0.0, faces_per_pixel=1)
+lights = PointLights(
+    device=device, 
+    location=[
+        [0.0, 0.0, 3.0],
+        [0.0, 0.0, -3.0],
+        [3.0, 0.0, 0.0],
+        [-3.0, 0.0, 0.0],
+        [0.0, 3.0, 0.0],
+        [0.0, -3.0, 0.0]
+    ]
+)
 
 # Create a renderer
 renderer = MeshRenderer(
@@ -65,22 +80,22 @@ renderer = MeshRenderer(
     shader=SoftPhongShader(device=device, cameras=cameras, lights=lights)
 )
 
-# Load style image and VGG model
-style_image = load_image(style_image_path).unsqueeze(0).to(device)
-style_image_resized = transforms.Resize((512, 512))(style_image)  # Style image as background
+# Load style image
+style_tensor = load_as_tensor(style_image_path, size=size).unsqueeze(0).to(device)
 
-vgg = get_vgg()
+# Load VGG model
+vgg = get_vgg(device=device)
 
 # Define angles for viewpoints
 angles_x = torch.linspace(0, 270, n_views)  # X-axis rotation
-angles_y = torch.linspace(90, 270, n_views - 1)  # Y-axis rotation
+angles_y = torch.linspace(90, 270, n_views - 2)  # Y-axis rotation
 angles = [(angle.item(), "X") for angle in angles_x] + [(angle.item(), "Y") for angle in angles_y]
 
 # Initialize texture optimization
 current_cow_mesh = content_cow_mesh.clone()
 texture_map = current_cow_mesh.textures.maps_padded()
 texture_map.requires_grad = True
-optimizer = torch.optim.Adam([texture_map], lr=0.01)
+optimizer = torch.optim.Adam([texture_map], lr=learning_rate)
 
 # Render and optimize for each viewpoint
 for i, (angle, axis) in enumerate(angles):
@@ -90,45 +105,35 @@ for i, (angle, axis) in enumerate(angles):
     cameras = FoVPerspectiveCameras(R=R, T=T, device=device)
 
     # Render the content image
-    rendered_content_out = renderer(meshes_world=content_cow_mesh, cameras=cameras, lights=lights)
-    content_image = rendered_content_out[0, ..., :3].permute(2, 0, 1).unsqueeze(0)  # (1, 3, H, W)
-    alpha_channel = rendered_content_out[0, ..., 3]  # Get the alpha channel
-    object_mask = (alpha_channel > 0).float()  # Binary mask based on transparency
+    content_tensor, content_object_mask = render_meshes(renderer, content_cow_mesh, cameras)
 
     if use_background == 2:
-        content_image = apply_background(content_image, object_mask, style_image_resized)
+        content_tensor = apply_background(content_tensor, content_object_mask, style_tensor)
 
     # Render the current texture
-    rendered_current_out = renderer(meshes_world=current_cow_mesh, cameras=cameras, lights=lights)
-    current_image = rendered_current_out[0, ..., :3].permute(2, 0, 1).unsqueeze(0)
+    current_tensor, current_object_mask = render_meshes(renderer, current_cow_mesh, cameras)
 
     if use_background in [1,2]:
-        current_image = apply_background(current_image, object_mask, style_image_resized)
+        current_tensor = apply_background(current_tensor, current_object_mask, style_tensor)
 
     # Perform style transfer
-    styled_image = style_transfer(current_image, content_image, style_image, vgg, steps=n_style_transfer_steps,
+    applied_style_tensor = style_transfer(current_tensor, content_tensor, style_tensor, vgg, steps=n_style_transfer_steps,
                                   style_weight=style_weight, content_weight=content_weight)
 
     # Save the styled image
-    styled_image_np = tensor_to_image(styled_image)
-    styled_image_np.save(f"styled_image_view_{i}.png")
-
-    # Prepare styled image for MSE optimization
-    styled_image_tensor = transforms.ToTensor()(styled_image_np).unsqueeze(0).to(device)
+    applied_style_image = tensor_to_image(applied_style_tensor)
+    applied_style_image.save(f"applied_style_image_view_{i}.png")
 
     # Optimize the texture to match the styled image
     for step in range(n_mse_steps):
         optimizer.zero_grad()
         current_cow_mesh.textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=texture_map)
-        rendered_output = renderer(meshes_world=current_cow_mesh, cameras=cameras, lights=lights)
 
-        rendered_image = rendered_output[0, ..., :3].permute(2, 0, 1).unsqueeze(0)
-        alpha_channel = rendered_output[0, ..., 3]  # Get the alpha channel
-        object_mask = (alpha_channel > 0).float()  # Binary mask based on transparency
+        rendered_tensor, object_mask = render_meshes(renderer, current_cow_mesh, cameras)
 
         # Compute loss with the mask applied
-        masked_rendered = rendered_image * object_mask
-        masked_target = styled_image_tensor * object_mask
+        masked_rendered = rendered_tensor * object_mask
+        masked_target = applied_style_tensor * object_mask
         loss = torch.nn.functional.mse_loss(masked_rendered, masked_target)
 
         # Backpropagation
@@ -145,12 +150,8 @@ for i, (angle, axis) in enumerate(angles):
     cameras = FoVPerspectiveCameras(R=R, T=T, device=device)
 
     # Render optimized mesh
-    rendered_output = renderer(meshes_world=optimized_cow_mesh, cameras=cameras, lights=lights)
-    image = rendered_output[0, ..., :3].unsqueeze(0)
-    image_np = image.squeeze(0).detach().cpu().numpy()
-    image_np = np.clip(image_np, 0.0, 1.0)  # Ensure valid range
+    tensor, _ = render_meshes(renderer, optimized_cow_mesh, cameras)
+    image = tensor_to_image(tensor)
 
-    # Save as PNG
-    image_pil = Image.fromarray((image_np * 255).astype(np.uint8))
-    image_pil.save(f"rendered_optimized_cow_view_{i}.png")
+    image.save(f"rendered_optimized_cow_view_{i}.png")
     print(f"Saved image for view {i}")
