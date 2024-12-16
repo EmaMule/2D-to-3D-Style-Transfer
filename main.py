@@ -50,6 +50,7 @@ learning_rate = 0.01
 
 # Create output folder
 os.makedirs(output_path, exist_ok=True)
+os.makedirs(output_path+"/2d_style_transfer", exist_ok=True)
 
 # Set device (use GPU if available)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
