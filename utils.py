@@ -10,7 +10,7 @@ def apply_background(rendered_image, mask, background):
 
 
 # Load and preprocess the images
-def load_as_tensor(image_path, size=512):
+def load_as_tensor(image_path, device, size=512):
 
     image = Image.open(image_path).convert('RGB')
 

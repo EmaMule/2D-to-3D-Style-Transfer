@@ -81,7 +81,7 @@ renderer = MeshRenderer(
 )
 
 # Load style image
-style_tensor = load_as_tensor(style_image_path, size=size).unsqueeze(0).to(device)
+style_tensor = load_as_tensor(style_image_path, device, size=size).unsqueeze(0).to(device)
 
 # Load VGG model
 vgg = get_vgg(device=device)
