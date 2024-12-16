@@ -32,7 +32,7 @@ def load_as_tensor(image_path, size=512):
 
 # Load the pre-trained VGG19 model
 def get_vgg():
-    vgg = models.vgg19(pretrained=True).features.to(device)
+    vgg = models.vgg19(weights=models.VGG19_Weights.IMAGENET1K_V1).features.to(device)
     for param in vgg.parameters():
         param.requires_grad_(False)
     return vgg
