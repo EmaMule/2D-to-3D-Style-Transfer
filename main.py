@@ -25,11 +25,36 @@ from pytorch3d.renderer import (
     MeshRasterizer, SoftPhongShader, PointLights
 )
 
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--n_views", default=4,type=int, help="Number of views considered by the renderer")
+parser.add_argument("--n_mse_steps", default=100, type=int, help="Number steps mse")
+parser.add_argument("--n_style_transfer_steps", default=3000, type=int, help="Number steps style transfer")
+parser.add_argument("--use_background", default=0, type=int, help="Specify background modality: if 0, no background, if 1 background on the rendered image, 2 background on both")
+parser.add_argument("--obj_path", default="./objects/cow_mesh/cow.obj", type=str, help="Specify the path to the object")
+parser.add_argument("--style_path", default="./imgs/Style_1.jpg", type=str, help="Specify the path to the style")
+parser.add_argument("--style_weight", default=1e6, type=int, help="Weight of the style")
+parser.add_argument("--content_weight", default=1, type=int, help="Weight of the content")
+args = parser.parse_args()
+
+#parsing args
+cow_obj_path = args.obj_path
+style_image_path = args.style_path
+n_views = args.n_views
+n_mse_steps = args.n_mse_steps
+n_style_transfer_steps = args.n_style_transfer_steps
+use_background = args.use_background
+
+content_weight = args.content_weight
+style_weight = args.style_weight
+
+# Helper function to blend image with background
+def apply_background(rendered_image, mask, background):
+    return rendered_image * mask + background * (1 - mask)
+
 # Set the device (use GPU if available)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-# Path to the cow OBJ file
-cow_obj_path = "./objects/cow_mesh/cow.obj"
 
 # Load the cow mesh
 verts, faces, aux = load_obj(cow_obj_path)
@@ -72,17 +97,14 @@ renderer = MeshRenderer(
     shader=SoftPhongShader(device=device, cameras=cameras, lights=lights)
 )
 
-# Take the style_image
-style_image_path = "./imgs/Style_3.png"
 style_image = load_image(style_image_path).unsqueeze(0)  # If we end up working in batches, we need to stack them
 
 # Load VGG model
 vgg = get_vgg()
 
 # Define multiple viewpoints for both X-axis and Y-axis rotations
-num_views = 4  # Number of viewpoints per axis
-angles_x = torch.linspace(0, 270, num_views)  # Angles in degrees for X-axis rotation (no repetition)
-angles_y = torch.linspace(90, 270, num_views-1)  # Angles in degrees for Y-axis rotation (no repetition)
+angles_x = torch.linspace(0, 270, n_views)  # Angles in degrees for X-axis rotation (no repetition)
+angles_y = torch.linspace(90, 270, n_views-1)  # Angles in degrees for Y-axis rotation (no repetition)
 
 # Combine the angles and axes into a single list
 angles = [(angle.item(), "X") for angle in angles_x] + [(angle.item(), "Y") for angle in angles_y]
@@ -119,7 +141,7 @@ for i, (angle, axis) in enumerate(angles):
 
 
     # Perform style transfer on the masked cow image --> errore
-    styled_image = style_transfer(current_image, content_image, style_image, vgg, steps=3000)
+    styled_image = style_transfer(current_image, content_image, style_image, vgg, steps=n_style_transfer_steps, style_weight=style_weight, content_weight=content_weight)
 
     # Use styled image as target for texture optimization
     styled_image_np = tensor_to_image(styled_image)
@@ -128,7 +150,7 @@ for i, (angle, axis) in enumerate(angles):
     # Convert styled image back to tensor for texture optimization
     styled_image_tensor = transforms.ToTensor()(styled_image_np).unsqueeze(0).to(device)
 
-    for step in range(100):
+    for step in range(n_mse_steps):
         optimizer.zero_grad()
 
         # Update current mesh texture
@@ -165,10 +187,14 @@ for i, (angle, axis) in enumerate(angles):
     # Convert the image from tensor to NumPy array
     image_np = image.squeeze(0).detach().cpu().numpy()  # Convert to NumPy array on CPU
 
+    # Clip the values to the range [0, 1]
+    image_np = np.clip(image_np, 0.0, 1.0)  # Ensures valid range for saving
+
     # Convert the image to PIL format
     image_pil = Image.fromarray((image_np * 255).astype(np.uint8))  # Convert to uint8 format for saving
 
     # Save the image for the current viewpoint
     image_pil.save(f"rendered_optimized_cow_view_{i}.png")  # Save the image with a unique name
     print(f"Saved image for view {i}")
+
 
