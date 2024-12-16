@@ -7,13 +7,17 @@ from pytorch3d.transforms import RotateAxisAngle
 from pytorch3d.renderer import FoVPerspectiveCameras
 
 
+# Check if CUDA is available
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
 # Helper function to blend image with background
 def apply_background(rendered_image, mask, background):
     return rendered_image * mask + background * (1 - mask)
 
 
 # Load and preprocess the images
-def load_as_tensor(image_path, device, size=512):
+def load_as_tensor(image_path, size=512):
 
     image = Image.open(image_path).convert('RGB')
 
@@ -27,7 +31,7 @@ def load_as_tensor(image_path, device, size=512):
 
 
 # Load the pre-trained VGG19 model
-def get_vgg(device):
+def get_vgg():
     vgg = models.vgg19(pretrained=True).features.to(device)
     for param in vgg.parameters():
         param.requires_grad_(False)

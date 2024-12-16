@@ -78,10 +78,10 @@ renderer = MeshRenderer(
 )
 
 # Load style image
-style_tensor = load_as_tensor(style_image_path, device, size=size).unsqueeze(0).to(device)
+style_tensor = load_as_tensor(style_image_path, size=size).unsqueeze(0).to(device)
 
 # Load VGG model
-vgg = get_vgg(device=device)
+vgg = get_vgg()
 
 # Define angles for viewpoints
 angles_x = torch.linspace(0, 270, n_views)  # X-axis rotation
