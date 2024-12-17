@@ -48,6 +48,7 @@ output_path = args.output_path
 # Other Parameters
 learning_rate = 0.01
 style_transfer_lr = 0.003
+batch_size = n_views
 
 # Create output folder
 os.makedirs(output_path, exist_ok=True)
@@ -66,9 +67,14 @@ texture_image = list(aux.texture_images.values())[0][None, ...].to(device)  # (1
 original_textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=texture_image)
 content_cow_mesh = Meshes(verts=[verts.to(device)], faces=[faces.verts_idx.to(device)], textures=original_textures)
 
+content_cow_meshes = content_cow_mesh.extend(batch_size) #extends the mesh of the content to batch_size (num views)
+
+#Remains unchanged!
+
 # Camera, rasterization, and lighting settings
 cameras = FoVPerspectiveCameras(device=device)
 raster_settings = RasterizationSettings(image_size=size, blur_radius=0.0, faces_per_pixel=1)
+# try AmbientLights instead!
 lights = PointLights(device=device, location=[[0.0, 0.0, 3.0]])
 
 # Create a renderer
@@ -88,6 +94,14 @@ angles_x = torch.linspace(0, 270, n_views)  # X-axis rotation
 angles_y = torch.linspace(90, 270, n_views - 2)  # Y-axis rotation
 angles = [(angle.item(), "X") for angle in angles_x] + [(angle.item(), "Y") for angle in angles_y]
 
+# Initialize texture optimization --> work in batches!
+current_cow_meshes = content_cow_meshes.clone()
+texture_maps = current_cow_meshes.textures.maps_padded() #are they all?
+
+texture_maps.requires_grad = True
+optimizer = torch.optim.Adam([texture_maps], lr=learning_rate)
+
+
 # Batch Rotation Matrices
 R_list = []
 T_list = []
@@ -101,15 +115,9 @@ T_batch = torch.stack(T_list, dim=0).squeeze(1)
 # Batch Cameras
 cameras = FoVPerspectiveCameras(R=R_batch, T=T_batch, device=device)
 
-# Render and optimize in batches
-current_cow_mesh = content_cow_mesh.clone()
-texture_map = current_cow_mesh.textures.maps_padded()
-texture_map.requires_grad = True
-optimizer = torch.optim.Adam([texture_map], lr=learning_rate)
-
 # Render content and current images for all views
-content_tensors, content_masks = render_meshes(renderer, content_cow_mesh, cameras)
-current_tensors, current_masks = render_meshes(renderer, current_cow_mesh, cameras)
+content_tensors, content_masks = render_meshes(renderer, content_cow_meshes, cameras)
+current_tensors, current_masks = render_meshes(renderer, current_cow_meshes, cameras)
 
 # Apply background if needed
 if use_background in [1, 2]:
@@ -128,8 +136,8 @@ for i, styled_tensor in enumerate(styled_tensors):
 # Optimize the texture map in batches
 for step in range(n_mse_steps):
     optimizer.zero_grad()
-    current_cow_mesh.textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=texture_map)
-    rendered_tensors, object_masks = render_meshes(renderer, current_cow_mesh, cameras)
+    current_cow_meshes.textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=texture_maps)
+    rendered_tensors, object_masks = render_meshes(renderer, current_cow_meshes, cameras)
     
     # Compute masked MSE loss
     masked_rendered = rendered_tensors * object_masks
@@ -143,4 +151,4 @@ for step in range(n_mse_steps):
     print(f"Step {step}, Loss: {loss.item()}")
 
 # Save final optimized render
-save_render(renderer, angles, current_cow_mesh, output_path+"/final_render")
+save_render(renderer, angles, current_cow_meshes, output_path+"/final_render")
