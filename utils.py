@@ -54,13 +54,13 @@ def render_meshes(renderer, meshes, cameras):
     object_masks = []
     for camera in cameras:
         rendered_output = renderer(meshes_world=meshes, cameras=camera)
-        tensor = rendered_output[0, ..., :3].permute(2, 0, 1).unsqueeze(0)  # (1, 3, H, W)
+        tensor = rendered_output[0, ..., :3].permute(2, 0, 1) # (3, H, W)
         alpha_channel = rendered_output[0, ..., 3]  # Get the alpha channel
-        object_mask = (alpha_channel > 0).float()  # Binary mask based on transparency
-        tensors.append(tensors)
+        object_mask = (alpha_channel > 0).float().unsqueeze(0)  # Binary mask based on transparency
+        tensors.append(tensor)
         object_masks.append(object_mask)
-    tensors = torch.Tensor(tensors, device = device)
-    object_masks = torch.Tensor(object_masks, device = device)
+    tensors = torch.stack(tensors, dim = 0) # (BATCH, 3, H, W)
+    object_masks = torch.stack(object_masks, dim = 0)
     return tensors, object_masks
 
 
@@ -70,7 +70,7 @@ def save_render(renderer, meshes, cameras, path):
     os.makedirs(path, exist_ok=True)
 
     # Render optimized mesh
-    tensors, _ = render_meshes(renderer, mesh, cameras)
+    tensors, _ = render_meshes(renderer, meshes, cameras)
 
     for i in range(tensors.shape[0]):
         tensor = tensors[i, ...]

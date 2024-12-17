@@ -110,8 +110,8 @@ T_batch = torch.stack(T_list, dim=0).squeeze(1)  # (n_views, 3)
 cameras = FoVPerspectiveCameras(R=R_batch, T=T_batch, device=device)
 
 # Render content and current images for all views
-content_tensors, content_masks = render_meshes(renderer, content_cow_meshes, cameras)
-current_tensors, current_masks = render_meshes(renderer, current_cow_meshes, cameras)
+content_tensors, content_masks = render_meshes(renderer, content_cow_mesh, cameras)
+current_tensors, current_masks = render_meshes(renderer, current_cow_mesh, cameras)
 
 # Apply background if needed
 if use_background in [1, 2]:
