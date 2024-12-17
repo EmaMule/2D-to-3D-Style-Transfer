@@ -86,10 +86,11 @@ renderer = MeshRenderer(
 vgg = get_vgg()
 
 # Define angles for viewpoints
-x_views = (n_views // 2) + 1
+x_views = (n_views // 2)
 y_views = n_views - x_views
-angles_x = torch.linspace(0, 270, x_views)  # X-axis rotation
-angles_y = torch.linspace(90, 270, y_views)  # Y-axis rotation
+angles_x = torch.linspace(0, 360, x_views)  # X-axis rotation
+angles_y = torch.linspace(0, 360, y_views)  # Y-axis rotation
+# RETURN TO PREVIOUS VERSION IF MANY IMAGES WON'T WORK
 angles = [(angle.item(), "X") for angle in angles_x] + [(angle.item(), "Y") for angle in angles_y]
 
 # Define camera list
@@ -112,13 +113,16 @@ optimizer = torch.optim.Adam([texture_map], lr=learning_rate)
 
 for i in range(math.ceil(n_views / batch_size)):
 
+    print(f"Batch {i+1} of {math.ceil(n_views / batch_size)}")
+
     batch_start = i*batch_size
     batch_end = min((i+1)*batch_size, n_views)
     current_batch_size = batch_end - batch_start
     
     # Batch cameras
     # SHOULD SAMPLE INSTEAD!
-    batch_cameras = cameras_list[batch_start:batch_end]
+    # CAMERAS REQUIRES LIST AND CANNOT BE SLICED
+    batch_cameras = cameras_list[list(range(batch_start, batch_end))]
 
     # Load style image
     style_tensors = load_as_tensor(style_image_path, size=size).repeat(current_batch_size, 1, 1, 1).to(device)
@@ -147,7 +151,7 @@ for i in range(math.ceil(n_views / batch_size)):
     # Optimize the texture map in batches
     for step in range(n_mse_steps):
         optimizer.zero_grad()
-        rendered_tensors, object_masks = render_meshes(renderer, current_cow_mesh, cameras)
+        rendered_tensors, object_masks = render_meshes(renderer, current_cow_mesh, batch_cameras)
 
         # Compute masked MSE loss for all views in batch
         masked_rendered = rendered_tensors * object_masks  # Shape: [batch_size, C, H, W]
@@ -167,5 +171,5 @@ for i in range(math.ceil(n_views / batch_size)):
 final_cow_mesh = finalize_mesh(current_cow_mesh)
 
 # Save final optimized images
-save_render(renderer, final_cow_mesh, cameras, output_path+"/final_render")
+save_render(renderer, final_cow_mesh, cameras_list, output_path+"/final_render")
 IO().save_mesh(final_cow_mesh, output_path+"/final.obj")
