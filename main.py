@@ -152,3 +152,4 @@ for step in range(n_mse_steps):
 
 # Save final optimized images
 save_render(renderer, current_cow_mesh, cameras, output_path+"/final_render")
+save_mesh(current_cow_mesh, output_path+"/final.obj")
