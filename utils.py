@@ -87,7 +87,7 @@ def finalize_mesh(mesh):
     # finalize texture
     final_texture_map = torch.clamp(texture_map, 0.0, 1.0)
 
-    # finalize mesh
+    # finalize geometry
 
     # build final mesh
     final_mesh = mesh.clone()

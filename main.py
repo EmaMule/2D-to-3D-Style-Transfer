@@ -4,6 +4,7 @@ from tqdm import tqdm
 import os
 import numpy as np
 from PIL import Image
+import math
 
 # Import style transfer utilities
 from style_transfer import style_transfer
@@ -22,7 +23,7 @@ import argparse
 
 # Argument parser
 parser = argparse.ArgumentParser()
-parser.add_argument("--n_views", default=4, type=int, help="Number of views considered by the renderer")
+parser.add_argument("--n_views", default=6, type=int, help="Number of views considered by the renderer")
 parser.add_argument("--n_mse_steps", default=100, type=int, help="Number of steps for MSE optimization")
 parser.add_argument("--n_style_transfer_steps", default=3000, type=int, help="Number of steps for style transfer")
 parser.add_argument("--use_background", default=0, type=int, help="0: No background, 1: Background on rendered image, 2: Background on both")
@@ -30,8 +31,9 @@ parser.add_argument("--obj_path", default="./objects/cow_mesh/cow.obj", type=str
 parser.add_argument("--style_path", default="./imgs/Style_1.jpg", type=str, help="Path to the style image")
 parser.add_argument("--style_weight", default=1e6, type=float, help="Weight of the style loss")
 parser.add_argument("--content_weight", default=1.0, type=float, help="Weight of the content loss")
-parser.add_argument("--size", default=512, type=int, help="Dimension of the images")
+parser.add_argument("--size", default=768, type=int, help="Dimension of the images") # (default value is texture resolution)
 parser.add_argument("--output_path", default="/content/output", type=str, help="Output folder path")
+parser.add_argument("--batch_size", default=4, type=int, help="Batch size")
 args = parser.parse_args()
 
 # Parse arguments
@@ -45,11 +47,11 @@ content_weight = args.content_weight
 style_weight = args.style_weight
 size = args.size
 output_path = args.output_path
+batch_size = args.batch_size
 
 # Other Parameters
 learning_rate = 0.01
 style_transfer_lr = 0.003
-batch_size = n_views + n_views-2
 
 # Create output folder
 os.makedirs(output_path, exist_ok=True)
@@ -71,7 +73,7 @@ content_cow_mesh = Meshes(verts=[verts.to(device)], faces=[faces.verts_idx.to(de
 # Camera, rasterization, and lighting settings
 cameras = FoVPerspectiveCameras(device=device)
 raster_settings = RasterizationSettings(image_size=size, blur_radius=0.0, faces_per_pixel=1)
-# try AmbientLights instead!
+# try AmbientLights instead! (or make light in the same direction as camera)
 lights = PointLights(device=device, location=[[0.0, 0.0, 3.0]])
 
 # Create a renderer
@@ -80,16 +82,27 @@ renderer = MeshRenderer(
     shader=SoftPhongShader(device=device, cameras=cameras, lights=lights)
 )
 
-# Load style image
-style_tensors = load_as_tensor(style_image_path, size=size).repeat(batch_size, 1, 1, 1).to(device)
-
 # Load VGG model
 vgg = get_vgg()
 
 # Define angles for viewpoints
-angles_x = torch.linspace(0, 270, n_views)  # X-axis rotation
-angles_y = torch.linspace(90, 270, n_views - 2)  # Y-axis rotation
+x_views = (n_views // 2) + 1
+y_views = n_views - x_views
+angles_x = torch.linspace(0, 270, x_views)  # X-axis rotation
+angles_y = torch.linspace(90, 270, y_views)  # Y-axis rotation
 angles = [(angle.item(), "X") for angle in angles_x] + [(angle.item(), "Y") for angle in angles_y]
+
+# Define camera list
+R_list = []
+T_list = []
+for angle, axis in angles:
+    R = RotateAxisAngle(angle, axis=axis, device=device).get_matrix()[..., :3, :3].squeeze(0)
+    R_list.append(R)
+    T_list.append(torch.tensor([0.0, 0.0, 3.0], device=device))
+R_list = torch.stack(R_list, dim=0)  # (n_views, 3, 3)
+T_list = torch.stack(T_list, dim=0).squeeze(1)  # (n_views, 3)
+
+cameras_list = FoVPerspectiveCameras(R=R_list, T=T_list, device=device)
 
 # Initialize texture optimization
 current_cow_mesh = content_cow_mesh.clone()
@@ -97,58 +110,58 @@ texture_map = current_cow_mesh.textures.maps_padded()
 texture_map.requires_grad = True
 optimizer = torch.optim.Adam([texture_map], lr=learning_rate)
 
-# Batch Rotation Matrices
-R_list = []
-T_list = []
-for angle, axis in angles:
-    R = RotateAxisAngle(angle, axis=axis, device=device).get_matrix()[..., :3, :3].squeeze(0)
-    R_list.append(R)
-    T_list.append(torch.tensor([0.0, 0.0, 3.0], device=device))
-R_batch = torch.stack(R_list, dim=0)  # (n_views, 3, 3)
-T_batch = torch.stack(T_list, dim=0).squeeze(1)  # (n_views, 3)
+for i in range(math.ceil(n_views / batch_size)):
 
-# Batch Cameras
-cameras = FoVPerspectiveCameras(R=R_batch, T=T_batch, device=device)
+    batch_start = i*batch_size
+    batch_end = min((i+1)*batch_size, n_views)
+    current_batch_size = batch_end - batch_start
+    
+    # Batch cameras
+    # SHOULD SAMPLE INSTEAD!
+    batch_cameras = cameras_list[batch_start:batch_end]
 
-# Render content and current images for all views
-content_tensors, content_masks = render_meshes(renderer, content_cow_mesh, cameras)
-current_tensors, current_masks = render_meshes(renderer, current_cow_mesh, cameras)
+    # Load style image
+    style_tensors = load_as_tensor(style_image_path, size=size).repeat(current_batch_size, 1, 1, 1).to(device)
 
-# Apply background if needed
-if use_background in [1, 2]:
-    current_tensors = apply_background(current_tensors, current_masks, style_tensors)
+    # Render content and current images for all views
+    content_tensors, content_masks = render_meshes(renderer, content_cow_mesh, batch_cameras)
+    current_tensors, current_masks = render_meshes(renderer, current_cow_mesh, batch_cameras)
 
-# Apply background if needed
-if use_background == 2:
-    content_tensors = apply_background(content_tensors, content_masks, style_tensors)
+    # Apply background if needed
+    if use_background in [1, 2]:
+        current_tensors = apply_background(current_tensors, current_masks, style_tensors)
 
-# Perform batch style transfer
-applied_style_tensors = style_transfer(current_tensors, content_tensors, style_tensors, vgg, steps=n_style_transfer_steps,
-                                style_weight=style_weight, content_weight=content_weight, lr=style_transfer_lr)
+    # Apply background if needed
+    if use_background == 2:
+        content_tensors = apply_background(content_tensors, content_masks, style_tensors)
 
-# Save styled images
-for i, applied_style_tensor in enumerate(applied_style_tensors):
-    applied_style_image = tensor_to_image(applied_style_tensor)
-    applied_style_image.save(output_path + f"/2d_style_transfer/view_{i}.png")
+    # Perform batch style transfer
+    applied_style_tensors = style_transfer(current_tensors, content_tensors, style_tensors, vgg, steps=n_style_transfer_steps,
+                                    style_weight=style_weight, content_weight=content_weight, lr=style_transfer_lr)
 
-# Optimize the texture map in batches
-for step in range(n_mse_steps):
-    optimizer.zero_grad()
-    rendered_tensors, object_masks = render_meshes(renderer, current_cow_mesh, cameras)
+    # Save styled images
+    for j, applied_style_tensor in enumerate(applied_style_tensors):
+        applied_style_image = tensor_to_image(applied_style_tensor)
+        applied_style_image.save(output_path + f"/2d_style_transfer/view_{i*batch_size+j}.png")
 
-    # Compute masked MSE loss for all views in batch
-    masked_rendered = rendered_tensors * object_masks  # Shape: [batch_size, C, H, W]
-    masked_target = applied_style_tensors * object_masks  # Shape: [batch_size, C, H, W]
+    # Optimize the texture map in batches
+    for step in range(n_mse_steps):
+        optimizer.zero_grad()
+        rendered_tensors, object_masks = render_meshes(renderer, current_cow_mesh, cameras)
 
-    # LOSS OBTAINED AS AN AVERAGE OF THE STYLE TRANSFERS, DOESN'T MEAN IT'S A GOOD STYLE TRANSFER
-    # SHOULD NOT "COPY" THE STYLE TRASFER IMAGE EXACTLY (UNLESS FEW VIEWS)
-    loss = torch.nn.functional.mse_loss(masked_rendered, masked_target)
+        # Compute masked MSE loss for all views in batch
+        masked_rendered = rendered_tensors * object_masks  # Shape: [batch_size, C, H, W]
+        masked_target = applied_style_tensors * object_masks  # Shape: [batch_size, C, H, W]
 
-    # Backpropagation
-    loss.backward()
-    optimizer.step()
+        # LOSS OBTAINED AS AN AVERAGE OF THE STYLE TRANSFERS, DOESN'T MEAN IT'S A GOOD STYLE TRANSFER
+        # SHOULD NOT "COPY" THE STYLE TRASFER IMAGE EXACTLY (UNLESS FEW VIEWS)
+        loss = torch.nn.functional.mse_loss(masked_rendered, masked_target)
 
-    print(f"Step {step}, Loss: {loss.item()}")
+        # Backpropagation
+        loss.backward()
+        optimizer.step()
+
+        print(f"Step {step}, Loss: {loss.item()}")
 
 # Ensure texture values are in the correct range
 final_cow_mesh = finalize_mesh(current_cow_mesh)
