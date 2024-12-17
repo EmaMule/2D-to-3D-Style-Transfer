@@ -7,12 +7,13 @@ from PIL import Image
 
 # Import style transfer utilities
 from style_transfer import style_transfer
-from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes, save_render
+from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes, save_render, finalize_mesh
 
 from torchvision import transforms
 
 # Import PyTorch3D utilities
 from pytorch3d.io import load_obj
+from pytorch3d.io import IO
 from pytorch3d.structures import Meshes
 from pytorch3d.renderer import TexturesUV, FoVPerspectiveCameras, RasterizationSettings, MeshRenderer, MeshRasterizer, SoftPhongShader, PointLights, AmbientLights
 from pytorch3d.transforms import RotateAxisAngle
@@ -133,7 +134,6 @@ for i, applied_style_tensor in enumerate(applied_style_tensors):
 # Optimize the texture map in batches
 for step in range(n_mse_steps):
     optimizer.zero_grad()
-    current_cow_mesh.textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=texture_map)
     rendered_tensors, object_masks = render_meshes(renderer, current_cow_mesh, cameras)
 
     # Compute masked MSE loss for all views in batch
@@ -150,6 +150,9 @@ for step in range(n_mse_steps):
 
     print(f"Step {step}, Loss: {loss.item()}")
 
+# Ensure texture values are in the correct range
+final_cow_mesh = finalize_mesh(current_cow_mesh)
+
 # Save final optimized images
-save_render(renderer, current_cow_mesh, cameras, output_path+"/final_render")
-save_mesh(current_cow_mesh, output_path+"/final.obj")
+save_render(renderer, final_cow_mesh, cameras, output_path+"/final_render")
+IO().save_mesh(final_cow_mesh, output_path+"/final.obj")

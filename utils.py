@@ -4,8 +4,7 @@ from torchvision import transforms, models
 from PIL import Image
 import os
 from pytorch3d.transforms import RotateAxisAngle
-from pytorch3d.renderer import FoVPerspectiveCameras
-from pytorch3d.io import save_obj
+from pytorch3d.renderer import FoVPerspectiveCameras, TexturesUV
 
 # Check if CUDA is available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -78,23 +77,20 @@ def save_render(renderer, meshes, cameras, path):
         image.save(f"{path}/view_{i}.png")
 
 
-def save_mesh(mesh, path):
-    
-    # Extract vertices and faces
-    verts = mesh.verts_packed()
-    faces = mesh.faces_packed()
+def finalize_mesh(mesh):
 
-    textures = mesh.textures
-    verts_uvs = textures.verts_uvs_packed()
-    faces_uvs = textures.faces_uvs_packed()
-    texture_map = textures.maps_padded()
+    # extract components
+    texture_map = mesh.textures.maps_padded()
+    verts_uvs = mesh.textures.verts_uvs_padded()
+    faces_uvs = mesh.textures.faces_uvs_padded()
 
-    # Save to OBJ file
-    save_obj(
-        path,
-        verts=verts,
-        faces=faces,
-        verts_uvs=verts_uvs,
-        faces_uvs=faces_uvs,
-        texture_map=texture_map,
-    )
+    # finalize texture
+    final_texture_map = torch.clamp(texture_map, 0.0, 1.0)
+
+    # finalize mesh
+
+    # build final mesh
+    final_mesh = mesh.clone()
+    final_mesh.textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=final_texture_map)
+
+    return final_mesh
