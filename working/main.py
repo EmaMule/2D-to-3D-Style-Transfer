@@ -21,7 +21,7 @@ import argparse
 
 # Argument parser
 parser = argparse.ArgumentParser()
-parser.add_argument("--n_views", default=4, type=int, help="Number of views considered by the renderer")
+parser.add_argument("--n_views", default=6, type=int, help="Number of views considered by the renderer")
 parser.add_argument("--n_mse_steps", default=100, type=int, help="Number of steps for MSE optimization")
 parser.add_argument("--n_style_transfer_steps", default=3000, type=int, help="Number of steps for style transfer")
 parser.add_argument("--use_background", default=0, type=int, help="0: No background, 1: Background on rendered image, 2: Background on both")
@@ -48,7 +48,7 @@ output_path = args.output_path
 # Other Parameters
 learning_rate = 0.01
 style_transfer_lr = 0.003
-batch_size = n_views
+batch_size = n_views + n_views-2
 
 # Create output folder
 os.makedirs(output_path, exist_ok=True)
@@ -67,14 +67,11 @@ texture_image = list(aux.texture_images.values())[0][None, ...].to(device)  # (1
 original_textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=texture_image)
 content_cow_mesh = Meshes(verts=[verts.to(device)], faces=[faces.verts_idx.to(device)], textures=original_textures)
 
-content_cow_meshes = content_cow_mesh.extend(batch_size) #extends the mesh of the content to batch_size (num views)
-
-#Remains unchanged!
+content_cow_meshes = content_cow_mesh.extend(batch_size)  # Extend the mesh for all views
 
 # Camera, rasterization, and lighting settings
 cameras = FoVPerspectiveCameras(device=device)
 raster_settings = RasterizationSettings(image_size=size, blur_radius=0.0, faces_per_pixel=1)
-# try AmbientLights instead!
 lights = PointLights(device=device, location=[[0.0, 0.0, 3.0]])
 
 # Create a renderer
@@ -84,7 +81,7 @@ renderer = MeshRenderer(
 )
 
 # Load style image
-style_tensor = load_as_tensor(style_image_path, size=size).unsqueeze(0).to(device)
+style_tensor = load_as_tensor(style_image_path, size=size).repeat(batch_size, 1, 1, 1).to(device)
 
 # Load VGG model
 vgg = get_vgg()
@@ -94,23 +91,22 @@ angles_x = torch.linspace(0, 270, n_views)  # X-axis rotation
 angles_y = torch.linspace(90, 270, n_views - 2)  # Y-axis rotation
 angles = [(angle.item(), "X") for angle in angles_x] + [(angle.item(), "Y") for angle in angles_y]
 
-# Initialize texture optimization --> work in batches!
+# Initialize texture optimization
 current_cow_meshes = content_cow_meshes.clone()
-texture_maps = current_cow_meshes.textures.maps_padded() #are they all?
+texture_maps = current_cow_meshes.textures.maps_padded()  # Get initial texture maps
 
 texture_maps.requires_grad = True
 optimizer = torch.optim.Adam([texture_maps], lr=learning_rate)
-
 
 # Batch Rotation Matrices
 R_list = []
 T_list = []
 for angle, axis in angles:
-    R = RotateAxisAngle(angle, axis=axis, device=device).get_matrix()[..., :3, :3]
+    R = RotateAxisAngle(angle, axis=axis, device=device).get_matrix()[..., :3, :3].squeeze(0)
     R_list.append(R)
-    T_list.append(torch.tensor([[0.0, 0.0, 3.0]], device=device))
-R_batch = torch.stack(R_list, dim=0)
-T_batch = torch.stack(T_list, dim=0).squeeze(1)
+    T_list.append(torch.tensor([0.0, 0.0, 3.0], device=device))
+R_batch = torch.stack(R_list, dim=0)  # (n_views, 3, 3)
+T_batch = torch.stack(T_list, dim=0).squeeze(1)  # (n_views, 3)
 
 # Batch Cameras
 cameras = FoVPerspectiveCameras(R=R_batch, T=T_batch, device=device)
@@ -131,7 +127,7 @@ styled_tensors = style_transfer(current_tensors, content_tensors, style_tensor, 
 # Save styled images
 for i, styled_tensor in enumerate(styled_tensors):
     applied_style_image = tensor_to_image(styled_tensor)
-    applied_style_image.save(output_path+f"/2d_style_transfer/view_{i}.png")
+    applied_style_image.save(output_path + f"/2d_style_transfer/view_{i}.png")
 
 # Optimize the texture map in batches
 for step in range(n_mse_steps):
@@ -139,9 +135,9 @@ for step in range(n_mse_steps):
     current_cow_meshes.textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=texture_maps)
     rendered_tensors, object_masks = render_meshes(renderer, current_cow_meshes, cameras)
     
-    # Compute masked MSE loss
-    masked_rendered = rendered_tensors * object_masks
-    masked_target = styled_tensors * object_masks
+    # Compute masked MSE loss for all views in batch
+    masked_rendered = rendered_tensors * object_masks  # Shape: [batch_size, C, H, W]
+    masked_target = styled_tensors * object_masks  # Shape: [batch_size, C, H, W]
     loss = torch.nn.functional.mse_loss(masked_rendered, masked_target)
 
     # Backpropagation
@@ -151,4 +147,4 @@ for step in range(n_mse_steps):
     print(f"Step {step}, Loss: {loss.item()}")
 
 # Save final optimized render
-save_render(renderer, angles, current_cow_meshes, output_path+"/final_render")
+save_render(renderer, angles, current_cow_meshes, output_path + "/final_render")

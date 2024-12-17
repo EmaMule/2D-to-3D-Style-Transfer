@@ -13,6 +13,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Helper function to blend image with background
 def apply_background(rendered_image, mask, background):
+    mask = mask.unsqueeze(1)
     return rendered_image * mask + background * (1 - mask)
 
 
@@ -50,8 +51,8 @@ def tensor_to_image(tensor):
 # Render the content tensor
 def render_meshes(renderer, meshes, cameras):
     rendered_output = renderer(meshes_world=meshes, cameras=cameras)
-    tensor = rendered_output[0, ..., :3].permute(0, 3, 1, 2) # (1, 3, H, W)
-    alpha_channel = rendered_output[0, ..., 3]  # Get the alpha channel
+    tensor = rendered_output[..., :3].permute(0, 3, 1, 2)
+    alpha_channel = rendered_output[..., 3]  # Get the alpha channel
     object_masks = (alpha_channel > 0).float()  # Binary mask based on transparency
     return tensor, object_masks
 
