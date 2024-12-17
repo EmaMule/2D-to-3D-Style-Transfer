@@ -48,6 +48,7 @@ output_path = args.output_path
 # Other Parameters
 learning_rate = 0.01
 style_transfer_lr = 0.003
+batch_size = n_views + n_views-2
 
 # Create output folder
 os.makedirs(output_path, exist_ok=True)
@@ -79,7 +80,7 @@ renderer = MeshRenderer(
 )
 
 # Load style image
-style_tensor = load_as_tensor(style_image_path, size=size).unsqueeze(0).to(device)
+style_tensors = load_as_tensor(style_image_path, size=size).repeat(batch_size, 1, 1, 1).to(device)
 
 # Load VGG model
 vgg = get_vgg()
@@ -95,54 +96,59 @@ texture_map = current_cow_mesh.textures.maps_padded()
 texture_map.requires_grad = True
 optimizer = torch.optim.Adam([texture_map], lr=learning_rate)
 
-# Render and optimize for each viewpoint
-for i, (angle, axis) in enumerate(angles):
-    # Set up camera rotation
-    R = RotateAxisAngle(angle, axis=axis, device=device).get_matrix()[..., :3, :3]
-    T = torch.tensor([[0.0, 0.0, 3.0]], device=device)
-    cameras = FoVPerspectiveCameras(R=R, T=T, device=device)
+# Batch Rotation Matrices
+R_list = []
+T_list = []
+for angle, axis in angles:
+    R = RotateAxisAngle(angle, axis=axis, device=device).get_matrix()[..., :3, :3].squeeze(0)
+    R_list.append(R)
+    T_list.append(torch.tensor([0.0, 0.0, 3.0], device=device))
+R_batch = torch.stack(R_list, dim=0)  # (n_views, 3, 3)
+T_batch = torch.stack(T_list, dim=0).squeeze(1)  # (n_views, 3)
 
-    # Render the content image
-    content_tensor, content_object_mask = render_meshes(renderer, content_cow_mesh, cameras)
+# Batch Cameras
+cameras = FoVPerspectiveCameras(R=R_batch, T=T_batch, device=device)
 
-    if use_background == 2:
-        content_tensor = apply_background(content_tensor, content_object_mask, style_tensor)
+# Render content and current images for all views
+content_tensors, content_masks = render_meshes(renderer, content_cow_meshes, cameras)
+current_tensors, current_masks = render_meshes(renderer, current_cow_meshes, cameras)
 
-    # Render the current texture
-    current_tensor, current_object_mask = render_meshes(renderer, current_cow_mesh, cameras)
+# Apply background if needed
+if use_background in [1, 2]:
+    current_tensors = apply_background(current_tensors, current_masks, style_tensors)
 
-    if use_background in [1,2]:
-        current_tensor = apply_background(current_tensor, current_object_mask, style_tensor)
+# Apply background if needed
+if use_background == 2:
+    content_tensors = apply_background(content_tensors, content_masks, style_tensors)
 
-    # Perform style transfer
-    applied_style_tensor = style_transfer(current_tensor, content_tensor, style_tensor, vgg, steps=n_style_transfer_steps,
-                                  style_weight=style_weight, content_weight=content_weight, lr=style_transfer_lr)
+# Perform batch style transfer
+applied_style_tensors = style_transfer(current_tensors, content_tensors, style_tensors, vgg, steps=n_style_transfer_steps,
+                                style_weight=style_weight, content_weight=content_weight, lr=style_transfer_lr)
 
-    # Save the styled image
+# Save styled images
+for i, applied_style_tensor in enumerate(applied_style_tensors):
     applied_style_image = tensor_to_image(applied_style_tensor)
-    applied_style_image.save(output_path+f"/2d_style_transfer/view_{i}.png")
+    applied_style_image.save(output_path + f"/2d_style_transfer/view_{i}.png")
 
-    # Optimize the texture to match the styled image
-    for step in range(n_mse_steps):
-        optimizer.zero_grad()
-        current_cow_mesh.textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=texture_map)
+# Optimize the texture map in batches
+for step in range(n_mse_steps):
+    optimizer.zero_grad()
+    current_cow_mesh.textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=texture_map)
+    rendered_tensors, object_masks = render_meshes(renderer, current_cow_mesh, cameras)
 
-        rendered_tensor, object_mask = render_meshes(renderer, current_cow_mesh, cameras)
+    # Compute masked MSE loss for all views in batch
+    masked_rendered = rendered_tensors * object_masks  # Shape: [batch_size, C, H, W]
+    masked_target = applied_style_tensors * object_masks  # Shape: [batch_size, C, H, W]
 
-        # Compute loss with the mask applied
-        masked_rendered = rendered_tensor * object_mask
-        masked_target = applied_style_tensor * object_mask
-        loss = torch.nn.functional.mse_loss(masked_rendered, masked_target)
+    # LOSS OBTAINED AS AN AVERAGE OF THE STYLE TRANSFERS, DOESN'T MEAN IT'S A GOOD STYLE TRANSFER
+    # SHOULD NOT "COPY" THE STYLE TRASFER IMAGE EXACTLY (UNLESS FEW VIEWS)
+    loss = torch.nn.functional.mse_loss(masked_rendered, masked_target)
 
-        # Backpropagation
-        loss.backward()
-        optimizer.step()
+    # Backpropagation
+    loss.backward()
+    optimizer.step()
 
-        print(f"View {i}, Step {step}, Loss: {loss.item()}")
-    
-    save_render(renderer, angles, current_cow_mesh, output_path+f"/iteration_{i}")
-
+    print(f"Step {step}, Loss: {loss.item()}")
 
 # Save final optimized images
-optimized_cow_mesh = current_cow_mesh
-save_render(renderer, angles, optimized_cow_mesh, output_path+"/final_render")
+save_render(renderer, current_cow_mesh, cameras, output_path+"/final_render")
