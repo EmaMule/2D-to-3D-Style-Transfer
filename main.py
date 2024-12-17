@@ -88,8 +88,8 @@ vgg = get_vgg()
 # Define angles for viewpoints
 x_views = (n_views // 2)
 y_views = n_views - x_views
-angles_x = torch.linspace(0, 360, x_views)  # X-axis rotation
-angles_y = torch.linspace(0, 360, y_views)  # Y-axis rotation
+angles_x = torch.linspace(0, 315, x_views)  # X-axis rotation
+angles_y = torch.linspace(45, 315, y_views)  # Y-axis rotation
 # RETURN TO PREVIOUS VERSION IF MANY IMAGES WON'T WORK
 angles = [(angle.item(), "X") for angle in angles_x] + [(angle.item(), "Y") for angle in angles_y]
 
