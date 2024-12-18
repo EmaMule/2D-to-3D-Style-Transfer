@@ -105,6 +105,8 @@ texture_map = current_cow_mesh.textures.maps_padded()
 texture_map.requires_grad = True
 optimizer = torch.optim.Adam([texture_map], lr=mse_lr)
 
+#add epochs with randomization of the cameras? It can be used to have a middle-way between the two methods
+
 for i in range(math.ceil(n_views / batch_size)):
 
     print(f"Batch {i+1} of {math.ceil(n_views / batch_size)}")
