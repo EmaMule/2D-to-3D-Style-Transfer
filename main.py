@@ -5,6 +5,7 @@ import os
 import numpy as np
 from PIL import Image
 import math
+import random
 
 # Import style transfer utilities
 from style_transfer import style_transfer
@@ -111,7 +112,12 @@ texture_map = current_cow_mesh.textures.maps_padded()
 texture_map.requires_grad = True
 optimizer = torch.optim.Adam([texture_map], lr=learning_rate)
 
-visited_cameras = []
+#working on indexes and not cameras since is not hashable type
+visited_indexes = []
+
+#obtain all the index
+total_indexes = range(len(cameras_list))
+
 for i in range(math.ceil(n_views / batch_size)):
 
     print(f"Batch {i+1} of {math.ceil(n_views / batch_size)}")
@@ -123,11 +129,17 @@ for i in range(math.ceil(n_views / batch_size)):
     # Batch cameras
     # SHOULD SAMPLE INSTEAD!
     # CAMERAS REQUIRES LIST AND CANNOT BE SLICED
-    remaining_cameras = list(set(cameras_list) - set(visited_cameras))
-    batch_cameras = np.random.sample(remaining_cameras, current_batch_size)
-    print(batch_cameras)
-    #batch_cameras = cameras_list[list(range(batch_start, batch_end))]
-    visited_cameras.append(batch_cameras)
+    # Randomly sample from remaining indexes
+
+    remaining_indexes = list(set(total_indexes) - set(visited_indexes)) #difference between total and visited
+
+    batch_indexes = random.sample(remaining_indexes, current_batch_size) #sample (random samples without duplicates from the list of indexes)
+
+    # Map indexes to cameras
+    batch_cameras = [cameras_list[idx] for idx in batch_indexes]
+
+    # Add batch indexes to visited, update the indexes
+    visited_indexes.extend(batch_indexes)
 
     # Load style image
     style_tensors = load_as_tensor(style_image_path, size=size).repeat(current_batch_size, 1, 1, 1).to(device)
@@ -144,7 +156,7 @@ for i in range(math.ceil(n_views / batch_size)):
     if use_background == 2:
         content_tensors = apply_background(content_tensors, content_masks, style_tensors)
 
-    # Perform batch style transfer
+    # Perform batch style transfer --> IMPORTANT: I think to reduce noise and non-uniformity is better to use the content also for initialization and not the current
     applied_style_tensors = style_transfer(current_tensors, content_tensors, style_tensors, vgg, steps=n_style_transfer_steps,
                                     style_weight=style_weight, content_weight=content_weight, lr=style_transfer_lr)
 
