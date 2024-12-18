@@ -32,12 +32,12 @@ parser.add_argument("--style_path", default="./imgs/Style_1.jpg", type=str, help
 parser.add_argument("--style_weight", default=1e6, type=float, help="Weight of the style loss")
 parser.add_argument("--content_weight", default=1.0, type=float, help="Weight of the content loss")
 parser.add_argument("--size", default=768, type=int, help="Dimension of the images") # (default value is texture resolution)
-parser.add_argument("--output_path", default="/content/output", type=str, help="Output folder path")
+parser.add_argument("--output_path", default="/content/output_first", type=str, help="Output folder path")
 parser.add_argument("--batch_size", default=4, type=int, help="Batch size")
 parser.add_argument("--style_transfer_init", default='content', type=str, help="Initialization for the 2D Style Transfer")
 parser.add_argument("--content_background", default='white', type=str, help="Type of background for the content image")
 parser.add_argument("--current_background", default='white', type=str, help="Type of background for the current image")
-parser.add_argument("--style_trasfer_lr", default=0.01, type=float, help="Style Transfer Learning Rate")
+parser.add_argument("--style_transfer_lr", default=0.01, type=float, help="Style Transfer Learning Rate")
 parser.add_argument("--mse_lr", default=0.01, type=float, help="2D to 3D Learning Rate")
 args = parser.parse_args()
 
@@ -94,37 +94,14 @@ renderer = MeshRenderer(
 # Load VGG model
 vgg = get_vgg()
 
-# Define angles for viewpoints
-x_views = (n_views // 2)
-y_views = n_views - x_views
-angles_x = torch.linspace(0, 315, x_views)  # X-axis rotation
-angles_y = torch.linspace(45, 315, y_views)  # Y-axis rotation
-# RETURN TO PREVIOUS VERSION IF MANY IMAGES WON'T WORK
-angles = [(angle.item(), "X") for angle in angles_x] + [(angle.item(), "Y") for angle in angles_y]
-
-# Define camera list
-R_list = []
-T_list = []
-for angle, axis in angles:
-    R = RotateAxisAngle(angle, axis=axis, device=device).get_matrix()[..., :3, :3].squeeze(0)
-    R_list.append(R)
-    T_list.append(torch.tensor([0.0, 0.0, 3.0], device=device))
-R_list = torch.stack(R_list, dim=0)  # (n_views, 3, 3)
-T_list = torch.stack(T_list, dim=0).squeeze(1)  # (n_views, 3)
-
-cameras_list = FoVPerspectiveCameras(R=R_list, T=T_list, device=device)
+# Build cameras
+cameras_list = build_cameras(n_views)
 
 # Initialize texture optimization
 current_cow_mesh = content_cow_mesh.clone()
 texture_map = current_cow_mesh.textures.maps_padded()
 texture_map.requires_grad = True
 optimizer = torch.optim.Adam([texture_map], lr=mse_lr)
-
-#working on indexes and not cameras since is not hashable type
-visited_indexes = set()
-
-#obtain all the index
-total_indexes = set(range(len(cameras_list)))
 
 for i in range(math.ceil(n_views / batch_size)):
 
@@ -133,16 +110,10 @@ for i in range(math.ceil(n_views / batch_size)):
     batch_start = i*batch_size
     batch_end = min((i+1)*batch_size, n_views)
     current_batch_size = batch_end - batch_start
-    
-    remaining_indexes = total_indexes - visited_indexes #difference between total and visited
 
-    batch_indexes = random.sample(list(remaining_indexes), current_batch_size) #sample (random samples without duplicates from the list of indexes)
-
-    # Map indexes to cameras
+    # sample cameras (shuffling is done in the angles, they can be taken in order)
+    batch_indexes = list(range(batch_start, batch_end))
     batch_cameras = [cameras_list[idx] for idx in batch_indexes]
-
-    # Add batch indexes to visited, update the indexes
-    visited_indexes = visited_indexes | set(batch_indexes)
 
     # Load style image
     style_tensors = load_as_tensor(style_image_path, size=size).repeat(current_batch_size, 1, 1, 1).to(device)

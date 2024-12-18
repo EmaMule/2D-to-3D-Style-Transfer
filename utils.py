@@ -93,3 +93,31 @@ def finalize_mesh(mesh):
     final_mesh.textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=final_texture_map)
 
     return final_mesh
+
+
+def build_cameras(n_views, shuffle = True):
+
+    # Define angles for viewpoints
+    x_views = (n_views // 2)
+    y_views = n_views - x_views
+    angles_x = torch.linspace(0, 315, x_views)  # X-axis rotation
+    angles_y = torch.linspace(45, 315, y_views)  # Y-axis rotation
+    
+    angles = [(angle.item(), "X") for angle in angles_x] + [(angle.item(), "Y") for angle in angles_y]
+
+    # Shuffle angles instead of sampling cameras
+    random.shuffle(angles)
+
+    # Define camera list
+    R_list = []
+    T_list = []
+    for angle, axis in angles:
+        R = RotateAxisAngle(angle, axis=axis, device=device).get_matrix()[..., :3, :3].squeeze(0)
+        R_list.append(R)
+        T_list.append(torch.tensor([0.0, 0.0, 3.0], device=device))
+    R_list = torch.stack(R_list, dim=0)  # (n_views, 3, 3)
+    T_list = torch.stack(T_list, dim=0).squeeze(1)  # (n_views, 3)
+
+    cameras_list = FoVPerspectiveCameras(R=R_list, T=T_list, device=device)
+
+    return cameras_list
