@@ -102,11 +102,19 @@ def adjust_texture(texture_map):
     texture_map.requires_grad = True
 
 
-def build_cameras(n_views, shuffle = True):
+def build_cameras(n_views, shuffle = True, randomize=False):
 
     # Define angles for viewpoints
     x_views = (n_views // 2)
     y_views = n_views - x_views
+
+    if randomize:
+        angles_x = torch.rand(x_views) * 315  # Random angles in [0, 315) for X-axis
+        angles_y = 45 + torch.rand(y_views) * 270  # Random angles in [45, 315) for Y-axis
+    else:
+        angles_x = torch.linspace(0, 315, x_views)  # Equally spaced angles for X-axis
+        angles_y = torch.linspace(45, 315, y_views)  # Equally spaced angles for Y-axis
+        
     # CHANGE ANGLE RANGES?
     angles_x = torch.linspace(0, 315, x_views)  # X-axis rotation
     angles_y = torch.linspace(45, 315, y_views)  # Y-axis rotation
@@ -114,7 +122,8 @@ def build_cameras(n_views, shuffle = True):
     angles = [(angle.item(), "X") for angle in angles_x] + [(angle.item(), "Y") for angle in angles_y]
 
     # Shuffle angles instead of sampling cameras
-    random.shuffle(angles)
+    if shuffle:
+        random.shuffle(angles)
 
     # Define camera list
     R_list = []

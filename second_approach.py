@@ -36,6 +36,7 @@ parser.add_argument("--batch_size", default=4, type=int, help="Batch size")
 parser.add_argument("--content_background", default='white', type=str, help="Type of background for the content image")
 parser.add_argument("--current_background", default='white', type=str, help="Type of background for the current image")
 parser.add_argument("--lr", default=0.01, type=float, help="Style Transfer Learning Rate")
+parser.add_argument("--randomize_batch", type=bool, default=True, help="Whether or not to randomize batch") #the number of views is the same as batch_size?
 args = parser.parse_args()
 
 # Parse arguments
@@ -111,8 +112,9 @@ for epoch in tqdm(range(epochs)):
         current_batch_size = batch_end - batch_start
         
         # sample cameras (shuffling is done in the angles, they can be taken in order)
-        batch_indexes = list(range(batch_start, batch_end))
-        batch_cameras = [cameras_list[idx] for idx in batch_indexes]
+        #batch_indexes = list(range(batch_start, batch_end))
+        #batch_cameras = [cameras_list[idx] for idx in batch_indexes]
+        batch_cameras = build_cameras(n_views=current_batch_size, randomize=True) #batch of views
 
         # Load style image
         style_tensors = load_as_tensor(style_image_path, size=size).repeat(current_batch_size, 1, 1, 1).to(device)
