@@ -1,0 +1,23 @@
+Background 'noise' for both current and content seems to work the best.
+
+Intuition: the more the background assume the style, the less it will be transfered into the model, with the style
+background there is no incentive to learn the style within the cow. With the white background there are strong "style-like"
+artifacts in the background which dampen the effect on the cow, with the noise background it's harder to produce artifacts
+on the background and so the model is incentivized to minimize the style loss through the cow.
+
+Probably the "current" background has little to no effect.
+
+---
+
+Using the differential rendering not all pixels of the texture are optimized, some are untouched (are not seen and so the
+loss is not backpropagated to them).
+
+This is due to the resolution of the rendered images, the distance of the model and the normal of the texture w.r.t. the
+relative position of the camera.
+
+The texture is 1024x1024. Downsampling the texture could be a good idea?
+
+---
+
+Initializing the 2d style transfer with the "current" image usually produces images with "stronger" style, which when
+transfered to the texture make it "not homogeneous"
