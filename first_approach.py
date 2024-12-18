@@ -9,7 +9,7 @@ import random
 
 # Import style transfer utilities
 from style_transfer import style_transfer
-from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes, save_render, finalize_mesh
+from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes, save_render, finalize_mesh, build_cameras
 
 from torchvision import transforms
 
@@ -82,7 +82,6 @@ content_cow_mesh = Meshes(verts=[verts.to(device)], faces=[faces.verts_idx.to(de
 # Camera, rasterization, and lighting settings
 cameras = FoVPerspectiveCameras(device=device)
 raster_settings = RasterizationSettings(image_size=size, blur_radius=0.0, faces_per_pixel=1)
-# try AmbientLights instead! (or make light in the same direction as camera)
 lights = AmbientLights(device = device)
 
 # Create a renderer

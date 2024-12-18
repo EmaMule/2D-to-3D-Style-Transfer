@@ -21,3 +21,13 @@ The texture is 1024x1024. Downsampling the texture could be a good idea?
 
 Initializing the 2d style transfer with the "current" image usually produces images with "stronger" style, which when
 transfered to the texture make it "not homogeneous"
+
+---
+
+TODO:
+
+-) regulate zoom
+-) randomize cameras in 2° approach
+-) use 2 "current" in 2° approach
+
+
