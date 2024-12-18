@@ -36,7 +36,7 @@ parser.add_argument("--batch_size", default=4, type=int, help="Batch size")
 parser.add_argument("--content_background", default='white', type=str, help="Type of background for the content image")
 parser.add_argument("--current_background", default='white', type=str, help="Type of background for the current image")
 parser.add_argument("--lr", default=0.01, type=float, help="Style Transfer Learning Rate")
-parser.add_argument("--randomize_batch", type=bool, default=True, help="Whether or not to randomize batch") #the number of views is the same as batch_size?
+parser.add_argument("--randomize_views", type=bool, default=True, help="Whether or not to randomize views") #the number of views is the same as batch_size?
 args = parser.parse_args()
 
 # Parse arguments
@@ -52,7 +52,7 @@ batch_size = args.batch_size
 content_background = args.content_background
 current_background = args.current_background
 lr = args.lr
-randomize_batch=args.randomize_batch
+randomize_views=args.randomize_views
 
 assert content_background in ['noise', 'style', 'white']
 assert current_background in ['noise', 'style', 'white']
@@ -105,6 +105,9 @@ for epoch in tqdm(range(epochs)):
 
     total_loss = 0
 
+    if randomize_views:
+        epoch_camera_list = build_cameras(n_views=current_batch_size, randomize=randomize_views)
+
     for i in range(math.ceil(n_views / batch_size)):
 
         optimizer.zero_grad()
@@ -113,10 +116,8 @@ for epoch in tqdm(range(epochs)):
         current_batch_size = batch_end - batch_start
         
         # sample cameras (shuffling is done in the angles, they can be taken in order)
-        #batch_indexes = list(range(batch_start, batch_end))
-        #batch_cameras = [cameras_list[idx] for idx in batch_indexes]
-
-        batch_cameras = build_cameras(n_views=current_batch_size, randomize=randomize_batch)
+        batch_indexes = list(range(batch_start, batch_end))
+        batch_cameras = [cameras_list[idx] for idx in batch_indexes]
 
         # Load style image
         style_tensors = load_as_tensor(style_image_path, size=size).repeat(current_batch_size, 1, 1, 1).to(device)

@@ -39,6 +39,8 @@ parser.add_argument("--content_background", default='white', type=str, help="Typ
 parser.add_argument("--current_background", default='white', type=str, help="Type of background for the current image")
 parser.add_argument("--style_transfer_lr", default=0.01, type=float, help="Style Transfer Learning Rate")
 parser.add_argument("--mse_lr", default=0.01, type=float, help="2D to 3D Learning Rate")
+parser.add_argument("--randomize_views", type=bool, default=True, help="Whether or not to randomize views") #the number of views is the same as batch_size?
+
 args = parser.parse_args()
 
 # Parse arguments
@@ -57,6 +59,7 @@ content_background = args.content_background
 current_background = args.current_background
 mse_lr = args.mse_lr
 style_transfer_lr = args.style_transfer_lr
+randomize_views=args.randomize_views #if it will be used at some point
 
 assert style_transfer_init in ['noise', 'current', 'content']
 assert content_background in ['noise', 'style', 'white']
