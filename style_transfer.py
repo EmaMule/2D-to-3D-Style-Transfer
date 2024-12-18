@@ -89,10 +89,10 @@ def style_transfer(initial_optimized_imgs, content_imgs, style_imgs, model, step
 
 
 #method for the second approach
-def compute_perceptual_loss(initial_optimized_imgs, content_imgs, style_imgs, model, style_weight=1e6, content_weight=1):
+def compute_perceptual_loss(current_imgs, content_imgs, style_imgs, model, style_weight=1e6, content_weight=1):
     
     # Ensure content_imgs and style_imgs are batched tensors
-    assert initial_optimized_imgs.shape[0] == content_imgs.shape[0] == style_imgs.shape[0]
+    assert current_imgs.shape[0] == content_imgs.shape[0] == style_imgs.shape[0]
 
     # Extract features for content and style images
     content_features = get_features(content_imgs, model)['conv4_2']
@@ -104,22 +104,19 @@ def compute_perceptual_loss(initial_optimized_imgs, content_imgs, style_imgs, mo
     style_grams = {layer: gram_matrix(style_features[layer]) for layer in style_features}
     style_grams.pop('conv4_2')
 
-    # Initialize target images  --> the ones to optimize
-    optimized_imgs = initial_optimized_imgs.clone().detach().requires_grad_(True).to(device)
-
     # Extract features for current target batch
-    optimized_imgs_features = get_features(optimized_imgs, model)
+    current_imgs_features = get_features(current_imgs, model)
 
     # Calculate content loss
-    content_loss = torch.mean((optimized_imgs_features['conv4_2'] - content_features) ** 2)
+    content_loss = torch.mean((current_imgs_features['conv4_2'] - content_features) ** 2)
 
     # Calculate style loss
     style_loss = 0
     for layer in style_grams:
-        optimized_feature = optimized_imgs_features[layer]
-        optimized_gram = gram_matrix(optimized_feature)
-        layer_style_loss = torch.mean((optimized_gram - style_grams[layer]) ** 2)
-        style_loss += layer_style_loss / (optimized_feature.shape[1] ** 2 * optimized_feature.shape[2] ** 2)
+        current_feature = current_imgs_features[layer]
+        current_gram = gram_matrix(current_feature)
+        layer_style_loss = torch.mean((current_gram - style_grams[layer]) ** 2)
+        style_loss += layer_style_loss / (current_feature.shape[1] ** 2 * current_feature.shape[2] ** 2)
 
     # Total loss for this image
     total_loss = content_weight * content_loss + style_weight * style_loss

@@ -9,7 +9,7 @@ import random
 
 # Import style transfer utilities
 from style_transfer import compute_perceptual_loss
-from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes, save_render, finalize_mesh
+from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes, save_render, finalize_mesh, build_cameras
 
 from torchvision import transforms
 
@@ -57,7 +57,7 @@ assert current_background in ['noise', 'style', 'white']
 
 # Create output folder
 os.makedirs(output_path, exist_ok=True)
-os.makedirs(output_path+"/2d_style_transfer", exist_ok=True)
+os.makedirs(output_path+"/current_images", exist_ok=True)
 
 # Set device (use GPU if available)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -97,7 +97,9 @@ texture_map.requires_grad = True
 optimizer = torch.optim.Adam([texture_map], lr=lr)
 
 
-for epoch in range(epochs):
+# USE TWO CURRENT: ONE ALWAYS WITH STYLE AND ONE WITH THE SAME AS CONTENT
+
+for epoch in tqdm(range(epochs)):
 
     total_loss = 0
 
@@ -105,6 +107,7 @@ for epoch in range(epochs):
 
         print(f"Batch {i+1} of {math.ceil(n_views / batch_size)}")
 
+        optimizer.zero_grad()
         batch_start = i*batch_size
         batch_end = min((i+1)*batch_size, n_views)
         current_batch_size = batch_end - batch_start
