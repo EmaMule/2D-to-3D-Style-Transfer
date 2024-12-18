@@ -113,10 +113,10 @@ texture_map.requires_grad = True
 optimizer = torch.optim.Adam([texture_map], lr=learning_rate)
 
 #working on indexes and not cameras since is not hashable type
-visited_indexes = []
+visited_indexes = set()
 
 #obtain all the index
-total_indexes = range(len(cameras_list))
+total_indexes = set(range(len(cameras_list)))
 
 for i in range(math.ceil(n_views / batch_size)):
 
@@ -131,7 +131,7 @@ for i in range(math.ceil(n_views / batch_size)):
     # CAMERAS REQUIRES LIST AND CANNOT BE SLICED
     # Randomly sample from remaining indexes
 
-    remaining_indexes = list(set(total_indexes) - set(visited_indexes)) #difference between total and visited
+    remaining_indexes = total_indexes - visited_indexes #difference between total and visited
 
     batch_indexes = random.sample(remaining_indexes, current_batch_size) #sample (random samples without duplicates from the list of indexes)
 
@@ -139,7 +139,7 @@ for i in range(math.ceil(n_views / batch_size)):
     batch_cameras = [cameras_list[idx] for idx in batch_indexes]
 
     # Add batch indexes to visited, update the indexes
-    visited_indexes.extend(batch_indexes)
+    visited_indexes.add(batch_indexes)
 
     # Load style image
     style_tensors = load_as_tensor(style_image_path, size=size).repeat(current_batch_size, 1, 1, 1).to(device)
