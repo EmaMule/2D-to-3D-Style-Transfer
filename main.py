@@ -74,7 +74,7 @@ content_cow_mesh = Meshes(verts=[verts.to(device)], faces=[faces.verts_idx.to(de
 cameras = FoVPerspectiveCameras(device=device)
 raster_settings = RasterizationSettings(image_size=size, blur_radius=0.0, faces_per_pixel=1)
 # try AmbientLights instead! (or make light in the same direction as camera)
-lights = PointLights(device=device, location=[[0.0, 0.0, 3.0]])
+lights = AmbientLights(device = device)
 
 # Create a renderer
 renderer = MeshRenderer(
@@ -111,6 +111,7 @@ texture_map = current_cow_mesh.textures.maps_padded()
 texture_map.requires_grad = True
 optimizer = torch.optim.Adam([texture_map], lr=learning_rate)
 
+visited_cameras = []
 for i in range(math.ceil(n_views / batch_size)):
 
     print(f"Batch {i+1} of {math.ceil(n_views / batch_size)}")
@@ -122,7 +123,11 @@ for i in range(math.ceil(n_views / batch_size)):
     # Batch cameras
     # SHOULD SAMPLE INSTEAD!
     # CAMERAS REQUIRES LIST AND CANNOT BE SLICED
-    batch_cameras = cameras_list[list(range(batch_start, batch_end))]
+    remaining_cameras = list(set(cameras_list) - set(visited_cameras))
+    batch_cameras = np.random.sample(remaining_cameras, current_batch_size)
+    print(batch_cameras)
+    #batch_cameras = cameras_list[list(range(batch_start, batch_end))]
+    visited_cameras.append(batch_cameras)
 
     # Load style image
     style_tensors = load_as_tensor(style_image_path, size=size).repeat(current_batch_size, 1, 1, 1).to(device)
