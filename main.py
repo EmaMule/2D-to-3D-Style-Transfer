@@ -27,7 +27,6 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--n_views", default=6, type=int, help="Number of views considered by the renderer")
 parser.add_argument("--n_mse_steps", default=100, type=int, help="Number of steps for MSE optimization")
 parser.add_argument("--n_style_transfer_steps", default=3000, type=int, help="Number of steps for style transfer")
-parser.add_argument("--use_background", default=0, type=int, help="0: No background, 1: Background on rendered image, 2: Background on both")
 parser.add_argument("--obj_path", default="./objects/cow_mesh/cow.obj", type=str, help="Path to the object")
 parser.add_argument("--style_path", default="./imgs/Style_1.jpg", type=str, help="Path to the style image")
 parser.add_argument("--style_weight", default=1e6, type=float, help="Weight of the style loss")
@@ -35,6 +34,9 @@ parser.add_argument("--content_weight", default=1.0, type=float, help="Weight of
 parser.add_argument("--size", default=768, type=int, help="Dimension of the images") # (default value is texture resolution)
 parser.add_argument("--output_path", default="/content/output", type=str, help="Output folder path")
 parser.add_argument("--batch_size", default=4, type=int, help="Batch size")
+parser.add_argument("--style_transfer_init", default='content', type=str, help="Initialization for the 2D Style Transfer")
+parser.add_argument("--content_background", default='white', type=str, help="Type of background for the content image")
+parser.add_argument("--current_background", default='white', type=str, help="Type of background for the current image")
 args = parser.parse_args()
 
 # Parse arguments
@@ -43,12 +45,18 @@ style_image_path = args.style_path
 n_views = args.n_views
 n_mse_steps = args.n_mse_steps
 n_style_transfer_steps = args.n_style_transfer_steps
-use_background = args.use_background
 content_weight = args.content_weight
 style_weight = args.style_weight
 size = args.size
 output_path = args.output_path
 batch_size = args.batch_size
+style_trasfer_init = args.style_trasfer_init
+content_background = args.content_background
+current_background = args.current_background
+
+assert style_trasfer_init in ['noise', 'current', 'content']
+assert content_background in ['noise', 'style', 'white']
+assert current_background in ['noise', 'style', 'white']
 
 # Other Parameters
 learning_rate = 0.01
@@ -126,11 +134,6 @@ for i in range(math.ceil(n_views / batch_size)):
     batch_end = min((i+1)*batch_size, n_views)
     current_batch_size = batch_end - batch_start
     
-    # Batch cameras
-    # SHOULD SAMPLE INSTEAD!
-    # CAMERAS REQUIRES LIST AND CANNOT BE SLICED
-    # Randomly sample from remaining indexes
-
     remaining_indexes = total_indexes - visited_indexes #difference between total and visited
 
     batch_indexes = random.sample(remaining_indexes, current_batch_size) #sample (random samples without duplicates from the list of indexes)
@@ -144,20 +147,31 @@ for i in range(math.ceil(n_views / batch_size)):
     # Load style image
     style_tensors = load_as_tensor(style_image_path, size=size).repeat(current_batch_size, 1, 1, 1).to(device)
 
-    # Render content and current images for all views
+    # Render content images for all views
     content_tensors, content_masks = render_meshes(renderer, content_cow_mesh, batch_cameras)
-    current_tensors, current_masks = render_meshes(renderer, current_cow_mesh, batch_cameras)
-
-    # Apply background if needed
-    if use_background in [1, 2]:
-        current_tensors = apply_background(current_tensors, current_masks, style_tensors)
-
-    # Apply background if needed
-    if use_background == 2:
+    if content_background == 'noise':
+        content_tensors = apply_background(content_tensors, content_masks, torch.rand(style_tensors.shape, device = device))
+    elif content_background == 'style':
         content_tensors = apply_background(content_tensors, content_masks, style_tensors)
+    # else content_background == 'white' does nothing
+
+    # Initialize 2d style trasfer tensors
+    if style_trasfer_init == 'noise':
+        applied_style_tensors = torch.rand(content_tensors.shape, device=device)
+    elif style_trasfer_init == 'content':
+        applied_style_tensors = content_tensors
+    elif style_trasfer_init == 'current':
+        # Render current images for all views (only if used)
+        current_tensors, current_masks = render_meshes(renderer, current_cow_mesh, batch_cameras)
+        if current_background == 'noise':
+            current_tensors = apply_background(current_tensors, current_masks, torch.rand(style_tensors.shape, device=device))
+        elif current_background == 'style':
+            current_tensors = apply_background(current_tensors, current_masks, style_tensors)
+        # else current_background == 'white' does nothing
+        applied_style_tensors = current_tensors
 
     # Perform batch style transfer --> IMPORTANT: I think to reduce noise and non-uniformity is better to use the content also for initialization and not the current
-    applied_style_tensors = style_transfer(current_tensors, content_tensors, style_tensors, vgg, steps=n_style_transfer_steps,
+    applied_style_tensors = style_transfer(applied_style_tensors, content_tensors, style_tensors, vgg, steps=n_style_transfer_steps,
                                     style_weight=style_weight, content_weight=content_weight, lr=style_transfer_lr)
 
     # Save styled images
