@@ -27,9 +27,10 @@ transfered to the texture make it "not homogeneous"
 TODO:
 
 -) regulate zoom
--) randomize cameras in 2° approach
+-) randomize cameras in 2° approach --> done, is the batch / views logic to be reworked? I think it is ok right now?
 -) use 2 "current" in 2° approach
 -) check burning in 2° approach
 -) check material roughness?
-
+-) is it interesting to do epochs/randomization in the 1' method?
+-)
 

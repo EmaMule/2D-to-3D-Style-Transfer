@@ -36,7 +36,7 @@ parser.add_argument("--batch_size", default=4, type=int, help="Batch size")
 parser.add_argument("--content_background", default='white', type=str, help="Type of background for the content image")
 parser.add_argument("--current_background", default='white', type=str, help="Type of background for the current image")
 parser.add_argument("--lr", default=0.01, type=float, help="Style Transfer Learning Rate")
-parser.add_argument("--randomize_views", type=bool, default=True, help="Whether or not to randomize views") #the number of views is the same as batch_size?
+parser.add_argument("--randomize_views", type=bool, default=True, help="Whether or not to randomize views")
 args = parser.parse_args()
 
 # Parse arguments
@@ -100,13 +100,13 @@ optimizer = torch.optim.Adam([texture_map], lr=lr)
 
 
 # USE TWO CURRENT: ONE ALWAYS WITH STYLE AND ONE WITH THE SAME AS CONTENT
-
+epoch_cameras_list = cameras_list #if not randomized-->remains this
 for epoch in tqdm(range(epochs)):
 
     total_loss = 0
 
     if randomize_views:
-        epoch_camera_list = build_cameras(n_views=n_views, randomize=randomize_views)
+        epoch_cameras_list = build_cameras(n_views=n_views, randomize=randomize_views)
 
     for i in range(math.ceil(n_views / batch_size)):
 
@@ -117,7 +117,7 @@ for epoch in tqdm(range(epochs)):
         
         # sample cameras (shuffling is done in the angles, they can be taken in order)
         batch_indexes = list(range(batch_start, batch_end))
-        batch_cameras = [cameras_list[idx] for idx in batch_indexes]
+        batch_cameras = [epoch_cameras_list[idx] for idx in batch_indexes]
 
         # Load style image
         style_tensors = load_as_tensor(style_image_path, size=size).repeat(current_batch_size, 1, 1, 1).to(device)
@@ -155,5 +155,5 @@ for epoch in tqdm(range(epochs)):
 final_cow_mesh = finalize_mesh(current_cow_mesh)
 
 # Save final optimized images
-save_render(renderer, final_cow_mesh, cameras_list, output_path+"/final_render")
+save_render(renderer, final_cow_mesh, cameras_list, output_path+"/final_render") # fixed and not random views
 IO().save_mesh(final_cow_mesh, output_path+"/final.obj")

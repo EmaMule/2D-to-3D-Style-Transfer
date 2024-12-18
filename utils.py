@@ -116,8 +116,6 @@ def build_cameras(n_views, shuffle = True, randomize=False):
         angles_y = torch.linspace(45, 315, y_views)  # Equally spaced angles for Y-axis
         
     # CHANGE ANGLE RANGES?
-    angles_x = torch.linspace(0, 315, x_views)  # X-axis rotation
-    angles_y = torch.linspace(45, 315, y_views)  # Y-axis rotation
     
     angles = [(angle.item(), "X") for angle in angles_x] + [(angle.item(), "Y") for angle in angles_y]
 
