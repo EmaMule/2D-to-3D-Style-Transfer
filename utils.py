@@ -11,9 +11,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 # Helper function to blend image with background
-def apply_background(rendered_image, mask, background):
-    mask = mask.unsqueeze(1)
-    return rendered_image * mask + background * (1 - mask)
+def apply_background(tensors, masks, backgrounds):
+    return tensors * masks + backgrounds * (1 - masks)
 
 
 # Load and preprocess the images
