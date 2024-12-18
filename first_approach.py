@@ -37,6 +37,8 @@ parser.add_argument("--batch_size", default=4, type=int, help="Batch size")
 parser.add_argument("--style_transfer_init", default='content', type=str, help="Initialization for the 2D Style Transfer")
 parser.add_argument("--content_background", default='white', type=str, help="Type of background for the content image")
 parser.add_argument("--current_background", default='white', type=str, help="Type of background for the current image")
+parser.add_argument("--style_trasfer_lr", default=0.01, type=float, help="Style Transfer Learning Rate")
+parser.add_argument("--mse_lr", default=0.01, type=float, help="2D to 3D Learning Rate")
 args = parser.parse_args()
 
 # Parse arguments
@@ -50,17 +52,15 @@ style_weight = args.style_weight
 size = args.size
 output_path = args.output_path
 batch_size = args.batch_size
-style_trasfer_init = args.style_trasfer_init
+style_transfer_init = args.style_transfer_init
 content_background = args.content_background
 current_background = args.current_background
+mse_lr = args.mse_lr
+style_transfer_lr = args.style_transfer_lr
 
-assert style_trasfer_init in ['noise', 'current', 'content']
+assert style_transfer_init in ['noise', 'current', 'content']
 assert content_background in ['noise', 'style', 'white']
 assert current_background in ['noise', 'style', 'white']
-
-# Other Parameters
-learning_rate = 0.01
-style_transfer_lr = 0.003
 
 # Create output folder
 os.makedirs(output_path, exist_ok=True)
@@ -118,7 +118,7 @@ cameras_list = FoVPerspectiveCameras(R=R_list, T=T_list, device=device)
 current_cow_mesh = content_cow_mesh.clone()
 texture_map = current_cow_mesh.textures.maps_padded()
 texture_map.requires_grad = True
-optimizer = torch.optim.Adam([texture_map], lr=learning_rate)
+optimizer = torch.optim.Adam([texture_map], lr=mse_lr)
 
 #working on indexes and not cameras since is not hashable type
 visited_indexes = set()
@@ -136,13 +136,13 @@ for i in range(math.ceil(n_views / batch_size)):
     
     remaining_indexes = total_indexes - visited_indexes #difference between total and visited
 
-    batch_indexes = random.sample(remaining_indexes, current_batch_size) #sample (random samples without duplicates from the list of indexes)
+    batch_indexes = random.sample(list(remaining_indexes), current_batch_size) #sample (random samples without duplicates from the list of indexes)
 
     # Map indexes to cameras
     batch_cameras = [cameras_list[idx] for idx in batch_indexes]
 
     # Add batch indexes to visited, update the indexes
-    visited_indexes.add(batch_indexes)
+    visited_indexes = visited_indexes | set(batch_indexes)
 
     # Load style image
     style_tensors = load_as_tensor(style_image_path, size=size).repeat(current_batch_size, 1, 1, 1).to(device)
@@ -156,11 +156,11 @@ for i in range(math.ceil(n_views / batch_size)):
     # else content_background == 'white' does nothing
 
     # Initialize 2d style trasfer tensors
-    if style_trasfer_init == 'noise':
+    if style_transfer_init == 'noise':
         applied_style_tensors = torch.rand(content_tensors.shape, device=device)
-    elif style_trasfer_init == 'content':
+    elif style_transfer_init == 'content':
         applied_style_tensors = content_tensors
-    elif style_trasfer_init == 'current':
+    elif style_transfer_init == 'current':
         # Render current images for all views (only if used)
         current_tensors, current_masks = render_meshes(renderer, current_cow_mesh, batch_cameras)
         if current_background == 'noise':
