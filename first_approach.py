@@ -9,7 +9,7 @@ import random
 
 # Import style transfer utilities
 from style_transfer import style_transfer
-from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes, save_render, adjust_mesh, build_cameras
+from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes, save_render, finalize_mesh, build_cameras
 
 from torchvision import transforms
 
@@ -169,7 +169,7 @@ for i in range(math.ceil(n_views / batch_size)):
         print(f"Step {step}, Loss: {loss.item()}")
 
 # Ensure texture values are in the correct range
-final_cow_mesh = adjust_mesh(current_cow_mesh)
+final_cow_mesh = finalize_mesh(current_cow_mesh)
 
 # Save final optimized images
 save_render(renderer, final_cow_mesh, cameras_list, output_path+"/final_render")
