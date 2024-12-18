@@ -105,8 +105,6 @@ for epoch in tqdm(range(epochs)):
 
     for i in range(math.ceil(n_views / batch_size)):
 
-        print(f"Batch {i+1} of {math.ceil(n_views / batch_size)}")
-
         optimizer.zero_grad()
         batch_start = i*batch_size
         batch_end = min((i+1)*batch_size, n_views)
@@ -146,8 +144,6 @@ for epoch in tqdm(range(epochs)):
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
-
-    print(f"Epoch {epoch}, Loss: {total_loss}")
 
 # Ensure texture values are in the correct range
 final_cow_mesh = finalize_mesh(current_cow_mesh)
