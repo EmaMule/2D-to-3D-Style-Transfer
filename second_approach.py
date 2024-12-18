@@ -106,7 +106,7 @@ for epoch in tqdm(range(epochs)):
     total_loss = 0
 
     if randomize_views:
-        epoch_camera_list = build_cameras(n_views=current_batch_size, randomize=randomize_views)
+        epoch_camera_list = build_cameras(n_views=n_views, randomize=randomize_views)
 
     for i in range(math.ceil(n_views / batch_size)):
 
