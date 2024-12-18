@@ -29,5 +29,7 @@ TODO:
 -) regulate zoom
 -) randomize cameras in 2° approach
 -) use 2 "current" in 2° approach
+-) check burning in 2° approach
+-) check material roughness?
 
 

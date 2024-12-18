@@ -96,6 +96,12 @@ def finalize_mesh(mesh):
     return final_mesh
 
 
+def adjust_texture(texture_map):
+    texture_map.requires_grad = False
+    texture_map.clamp_(0,1)
+    texture_map.requires_grad = True
+
+
 def build_cameras(n_views, shuffle = True):
 
     # Define angles for viewpoints

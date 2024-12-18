@@ -9,7 +9,7 @@ import random
 
 # Import style transfer utilities
 from style_transfer import compute_perceptual_loss
-from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes, save_render, finalize_mesh, build_cameras
+from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes, save_render, finalize_mesh, build_cameras, adjust_texture
 
 from torchvision import transforms
 
@@ -126,7 +126,7 @@ for epoch in tqdm(range(epochs)):
         # else content_background == 'white' does nothing
 
         # Render current images for all views (only if used)
-        current_cow_mesh.texture_map.clamp_(0,1)
+        # adjust_texture(texture_map)
         current_tensors, current_masks = render_meshes(renderer, current_cow_mesh, batch_cameras)
         if current_background == 'noise':
             current_tensors = apply_background(current_tensors, current_masks, torch.rand(style_tensors.shape, device=device))
