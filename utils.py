@@ -5,6 +5,7 @@ from PIL import Image
 import os
 from pytorch3d.transforms import RotateAxisAngle
 from pytorch3d.renderer import FoVPerspectiveCameras, TexturesUV
+import random
 
 # Check if CUDA is available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -100,6 +101,7 @@ def build_cameras(n_views, shuffle = True):
     # Define angles for viewpoints
     x_views = (n_views // 2)
     y_views = n_views - x_views
+    # CHANGE ANGLE RANGES?
     angles_x = torch.linspace(0, 315, x_views)  # X-axis rotation
     angles_y = torch.linspace(45, 315, y_views)  # Y-axis rotation
     
@@ -114,6 +116,7 @@ def build_cameras(n_views, shuffle = True):
     for angle, axis in angles:
         R = RotateAxisAngle(angle, axis=axis, device=device).get_matrix()[..., :3, :3].squeeze(0)
         R_list.append(R)
+        # CHANGE DISTANCE?
         T_list.append(torch.tensor([0.0, 0.0, 3.0], device=device))
     R_list = torch.stack(R_list, dim=0)  # (n_views, 3, 3)
     T_list = torch.stack(T_list, dim=0).squeeze(1)  # (n_views, 3)
