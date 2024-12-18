@@ -77,7 +77,7 @@ def save_render(renderer, meshes, cameras, path):
         image.save(f"{path}/view_{i}.png")
 
 
-def finalize_mesh(mesh):
+def adjust_mesh(mesh):
 
     # extract components
     texture_map = mesh.textures.maps_padded()
