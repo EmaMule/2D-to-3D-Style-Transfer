@@ -39,11 +39,11 @@ parser.add_argument("--current_background", default='white', type=str, help="Typ
 parser.add_argument("--lr", default=0.01, type=float, help="Style Transfer Learning Rate")
 parser.add_argument("--randomize_views", type=bool, default=True, help="Whether or not to randomize views")
 parser.add_argument("--optimization_target", type=str, default="texture", help="Decide what to optimize")
-parser.add_argument("--main_loss_weight", type=float, default=1.0, help="Weight of the main computed loss (e.g., perceptual error)")
+parser.add_argument("--main_loss_weight", type=float, default=3.0, help="Weight of the main computed loss (i.e., perceptual)")
 parser.add_argument("--mesh_edge_loss_weight", type=float, default=1.0, help="Weight of edge loss (enforces admissible weights for the edges)")
-parser.add_argument("--mesh_laplacian_smoothing_weight", type=float, default=0.5, help="Weight of smoothing (smooth surface)")
-parser.add_argument("--mesh_normal_consistency_weight", type=float, default=0.8, help="Weight of normal consistency")
-parser.add_argument("--mesh_verts_weight", type=float, default=5.0, help="Mesh verts (uvs and not uvs) regularization weight")
+parser.add_argument("--mesh_laplacian_smoothing_weight", type=float, default=1.0, help="Weight of smoothing (smooth surface)")
+parser.add_argument("--mesh_normal_consistency_weight", type=float, default=1.0, help="Weight of normal consistency")
+parser.add_argument("--mesh_verts_weight", type=float, default=1.0, help="Mesh verts (uvs and not uvs) regularization weight")
 
 
 args = parser.parse_args()
