@@ -76,14 +76,15 @@ os.makedirs(output_path+"/2d_style_transfer", exist_ok=True)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # Load the cow mesh
-original_verts, faces, aux = load_obj(cow_obj_path)
+original_verts, original_faces, aux = load_obj(cow_obj_path)
 verts_uvs = aux.verts_uvs[None, ...].to(device)  # (1, V, 2)
-faces_uvs = faces.textures_idx[None, ...].to(device)  # (1, F, 3)
+faces_uvs = original_faces.textures_idx[None, ...].to(device)  # (1, F, 3)
+original_verts = original_verts.to(device)
 texture_image = list(aux.texture_images.values())[0][None, ...].to(device)  # (1, H, W, 3)
 
 # Initialize textures and mesh
 original_textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=texture_image)
-content_cow_mesh = Meshes(verts=[original_verts.to(device)], faces=[faces.verts_idx.to(device)], textures=original_textures)
+content_cow_mesh = Meshes(verts=[original_verts], faces=[original_faces.verts_idx], textures=original_textures)
 
 # Camera, rasterization, and lighting settings
 cameras = FoVPerspectiveCameras(device=device)
@@ -109,21 +110,30 @@ current_cow_mesh = content_cow_mesh.clone()
 
 # Initialize texture optimization
 if optimization_target == 'texture':
-    texture_map = current_cow_mesh.textures.maps_padded()
-    texture_map.requires_grad_(True)
-    optimizer = torch.optim.Adam([texture_map], lr=mse_lr)
+    current_texture_map = current_cow_mesh.textures.maps_padded()
+    current_texture_map.requires_grad_(True)
+    optimizer = torch.optim.Adam([current_texture_map], lr=mse_lr)
+    #additional parameters:
+    current_verts = original_verts
+    current_faces = original_faces #they don't change!
 
 elif optimization_target == 'mesh':
     current_verts = current_cow_mesh.verts_packed()
     current_verts.requires_grad_(True)
     optimizer = torch.optim.Adam([current_verts], lr=mse_lr)
+    #additional parameters:
+    current_texture_map = current_cow_mesh.textures.maps_padded()
+    current_faces = original_faces #for now
+
 
 elif optimization_target == 'both':
-    texture_map = current_cow_mesh.textures.maps_padded()
-    texture_map.requires_grad_(True)
+    current_texture_map = current_cow_mesh.textures.maps_padded()
+    current_texture_map.requires_grad_(True)
     current_verts = current_cow_mesh.verts_packed()
     current_verts.requires_grad_(True)
-    optimizer = torch.optim.Adam([texture_map, current_verts], lr=mse_lr)
+    optimizer = torch.optim.Adam([current_texture_map, current_verts], lr=mse_lr)
+    #additional parameters:
+    current_faces = original_faces #for now
 
 for i in range(math.ceil(n_views / batch_size)):
 
@@ -154,7 +164,7 @@ for i in range(math.ceil(n_views / batch_size)):
     elif style_transfer_init == 'content':
         applied_style_tensors = content_tensors
     elif style_transfer_init == 'current':
-        # Render current images for all views (only if used)
+        # Render current images for all views (only if used) --> WE MUST RENDER THE CURRENT MESH
         current_tensors, current_masks = render_meshes(renderer, current_cow_mesh, batch_cameras)
         if current_background == 'noise':
             current_tensors = apply_background(current_tensors, current_masks, torch.rand(style_tensors.shape, device=device))
@@ -176,8 +186,9 @@ for i in range(math.ceil(n_views / batch_size)):
     for step in range(n_mse_steps):
         optimizer.zero_grad()
 
-        current_textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=texture_map)
-        current_cow_mesh = Meshes(verts=[original_verts.to(device)], faces=[faces.verts_idx.to(device)], textures=current_textures)
+        #done because pytorch otherwise cries
+        current_textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=current_texture_map)
+        current_cow_mesh = Meshes(verts=[current_verts], faces=[current_faces.verts_idx], textures=current_textures)
 
         rendered_tensors, object_masks = render_meshes(renderer, current_cow_mesh, batch_cameras)
 
