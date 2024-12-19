@@ -9,6 +9,8 @@ from pytorch3d.structures import Meshes
 from pytorch3d.renderer.cameras import look_at_view_transform
 import random
 
+from pytorch3d.loss import mesh_edge_loss, mesh_laplacian_smoothing, mesh_normal_consistency
+
 # Check if CUDA is available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -154,7 +156,7 @@ def build_random_cameras(n_views, dist=2.10):
     return cameras_list
 
 
-def initialize_optimizations(optimization_target, mesh, lr):
+def setup_optimizations(optimization_target, mesh, lr):
 
     optimizable_mesh = mesh.clone()
 
@@ -187,3 +189,8 @@ def initialize_optimizations(optimization_target, mesh, lr):
             'verts_uvs': verts_uvs,
             'faces_uvs': faces_uvs
             }
+
+def build_mesh(verts_uvs, faces_uvs, texture_map, verts, faces):
+    textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=texture_map)
+    mesh = Meshes(verts=[verts], faces=[faces], textures=textures)
+    return mesh

@@ -32,3 +32,4 @@ TODO:
 -) add geometry optimization: remember to use several losses (regularizers)
 -) try "3° approach": do little steps on the texture using 1° approach with many camera views
 -) try l2 regularization w.r.t. the original texture?
+-) to rework the if-else portions in the main--> move them in utils for clarity

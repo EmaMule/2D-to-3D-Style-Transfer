@@ -9,7 +9,7 @@ import random
 
 # Import style transfer utilities
 from style_transfer import style_transfer
-from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes, save_render, finalize_mesh, build_fixed_cameras, build_random_cameras, initialize_optimizations
+from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes, save_render, finalize_mesh, build_fixed_cameras, build_random_cameras, setup_optimizations, build_mesh
 
 from torchvision import transforms
 
@@ -42,9 +42,12 @@ parser.add_argument("--style_transfer_lr", default=0.01, type=float, help="Style
 parser.add_argument("--mse_lr", default=0.01, type=float, help="2D to 3D Learning Rate")
 parser.add_argument("--randomize_views", type=bool, default=True, help="Whether or not to randomize views") #if it is of interest we might do it
 parser.add_argument("--optimization_target", type=str, default="texture", help="Decide what to optimize")
-parser.add_argument("--mesh_edge_loss_weight", type=float, default=3.0, help="Weight of edge loss (enforces admissable weights for the edges)")
-parser.add_argument("--mesh_laplacian_smoothing_weight", type=float, default=3.0, help="Weight of smoothing (smooth surface)")
-parser.add_argument("--mesh_normal_consistency_weight", type=float, default=3.0, help="Weight of normal consistency")
+parser.add_argument("--main_loss_weight", type=float, default=1.0, help="Weight of the main computed loss (e.g., mse)")
+parser.add_argument("--mesh_edge_loss_weight", type=float, default=1.0, help="Weight of edge loss (enforces admissible weights for the edges)")
+parser.add_argument("--mesh_laplacian_smoothing_weight", type=float, default=0.5, help="Weight of smoothing (smooth surface)")
+parser.add_argument("--mesh_normal_consistency_weight", type=float, default=0.8, help="Weight of normal consistency")
+parser.add_argument("--mesh_verts_weight", type=float, default=5.0, help="Mesh verts (uvs and not uvs) regularization weight")
+
 
 args = parser.parse_args()
 
@@ -70,6 +73,8 @@ optimization_target = args.optimization_target
 mesh_edge_loss_weight = args.mesh_edge_loss_weight
 mesh_laplacian_smoothing_weight = args.mesh_laplacian_smoothing_weight
 mesh_normal_consistency_weight = args.mesh_normal_consistency_weight
+mesh_verts_weight = args.mesh_verts_weight
+main_loss_weight = args.main_loss_weight
 
 assert style_transfer_init in ['noise', 'current', 'content']
 assert content_background in ['noise', 'style', 'white']
@@ -88,14 +93,13 @@ original_verts, original_faces, aux = load_obj(cow_obj_path)
 
 original_verts_uvs = aux.verts_uvs[None, ...].to(device)  # (1, V, 2)
 original_faces_uvs = original_faces.textures_idx[None, ...].to(device)  # (1, F, 3)
-original_faces = original_faces.verts_idx.to(device)
+original_faces = original_faces.verts_idx.to(device) #notice I'm overwriting the variable (it is not used in any case)
 texture_image = list(aux.texture_images.values())[0][None, ...].to(device)  # (1, H, W, 3)
 
 original_verts = original_verts.to(device)
 
 # Initialize content textures and mesh
-original_textures = TexturesUV(verts_uvs=original_verts_uvs, faces_uvs=original_faces_uvs, maps=texture_image)
-content_cow_mesh = Meshes(verts=[original_verts], faces=[original_faces], textures=original_textures)
+content_cow_mesh = build_mesh(original_verts_uvs, original_faces_uvs, texture_image, original_verts, original_faces)
 
 # Camera, rasterization, and lighting settings
 cameras = FoVPerspectiveCameras(device=device)
@@ -116,9 +120,10 @@ if randomize_views:
     cameras_list = build_random_cameras(n_views)
 else:
     cameras_list = build_fixed_cameras(n_views)
-    
+
+#RIVEDERE CON MATTEO: SI PUO FARE DI MEGLIO?
 #initialize optimization based on the target (it returns the mesh to optimize etc.)
-out = initialize_optimizations(optimization_target, content_cow_mesh, mse_lr)
+out = setup_optimizations(optimization_target, content_cow_mesh, mse_lr)
 
 #retrieve outputs (done like this for clarity)
 current_cow_mesh = out['optimizable_mesh']
@@ -146,6 +151,7 @@ for i in range(math.ceil(n_views / batch_size)):
 
     # Render content images for all views
     content_tensors, content_masks = render_meshes(renderer, content_cow_mesh, batch_cameras)
+
     if content_background == 'noise':
         content_tensors = apply_background(content_tensors, content_masks, torch.rand(style_tensors.shape, device = device))
     elif content_background == 'style':
@@ -158,7 +164,9 @@ for i in range(math.ceil(n_views / batch_size)):
     elif style_transfer_init == 'content':
         applied_style_tensors = content_tensors
     elif style_transfer_init == 'current':
-        # Render current images for all views (only if used) --> WE MUST RENDER THE CURRENT MESH
+
+        # Render current images for all views (only if used)
+        current_cow_mesh = build_mesh(verts_uvs, faces_uvs, texture_map, verts, faces)
         current_tensors, current_masks = render_meshes(renderer, current_cow_mesh, batch_cameras)
         if current_background == 'noise':
             current_tensors = apply_background(current_tensors, current_masks, torch.rand(style_tensors.shape, device=device))
@@ -167,7 +175,7 @@ for i in range(math.ceil(n_views / batch_size)):
         # else current_background == 'white' does nothing
         applied_style_tensors = current_tensors
 
-    # Perform batch style transfer --> IMPORTANT: I think to reduce noise and non-uniformity is better to use the content also for initialization and not the current
+    # Perform batch style transfer
     applied_style_tensors = style_transfer(applied_style_tensors, content_tensors, style_tensors, vgg, steps=n_style_transfer_steps,
                                     style_weight=style_weight, content_weight=content_weight, lr=style_transfer_lr)
 
@@ -181,8 +189,7 @@ for i in range(math.ceil(n_views / batch_size)):
         optimizer.zero_grad()
 
         #done because pytorch otherwise cries
-        current_textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=texture_map)
-        current_cow_mesh = Meshes(verts=[verts], faces=[faces], textures=current_textures)
+        current_cow_mesh = build_mesh(verts_uvs, faces_uvs, texture_map, verts, faces)
 
         rendered_tensors, object_masks = render_meshes(renderer, current_cow_mesh, batch_cameras)
 
@@ -191,19 +198,19 @@ for i in range(math.ceil(n_views / batch_size)):
         masked_target = applied_style_tensors * object_masks  # Shape: [batch_size, C, H, W]
 
         if optimization_target == 'texture':
-            loss = torch.nn.functional.mse_loss(masked_rendered, masked_target)
+            loss = torch.nn.functional.mse_loss(masked_rendered, masked_target) #loss weight ignored (no interest)
         
         # add mesh optimization loss terms
         elif optimization_target == 'mesh':
-            loss = torch.nn.functional.mse_loss(masked_rendered, masked_target)
-            loss += 10.0*(torch.nn.functional.mse_loss(verts, original_verts) + torch.nn.functional.mse_loss(verts_uvs, original_verts_uvs))
+            loss = main_loss_weight*torch.nn.functional.mse_loss(masked_rendered, masked_target)
+            loss+= mesh_verts_weight*(torch.nn.functional.mse_loss(verts, original_verts) + torch.nn.functional.mse_loss(verts_uvs, original_verts_uvs))
             loss+= mesh_edge_loss_weight*mesh_edge_loss(current_cow_mesh)
             loss+= mesh_laplacian_smoothing_weight*mesh_laplacian_smoothing(current_cow_mesh)
             loss+= mesh_normal_consistency_weight*mesh_normal_consistency(current_cow_mesh)
         
         elif optimization_target == 'both':
-            loss = torch.nn.functional.mse_loss(masked_rendered, masked_target)
-            loss += 10.0*(torch.nn.functional.mse_loss(verts, original_verts) + torch.nn.functional.mse_loss(verts_uvs, original_verts_uvs))
+            loss = main_loss_weight*torch.nn.functional.mse_loss(masked_rendered, masked_target)
+            loss+= mesh_verts_weight*(torch.nn.functional.mse_loss(verts, original_verts) + torch.nn.functional.mse_loss(verts_uvs, original_verts_uvs))
             loss+= mesh_edge_loss_weight*mesh_edge_loss(current_cow_mesh)
             loss+= mesh_laplacian_smoothing_weight*mesh_laplacian_smoothing(current_cow_mesh)
             loss+= mesh_normal_consistency_weight*mesh_normal_consistency(current_cow_mesh)
