@@ -5,6 +5,7 @@ from PIL import Image
 import os
 from pytorch3d.transforms import RotateAxisAngle
 from pytorch3d.renderer import FoVPerspectiveCameras, TexturesUV
+from pytorch3d.renderer.cameras import look_at_view_transform
 import random
 
 # Check if CUDA is available
@@ -102,18 +103,14 @@ def adjust_texture(texture_map):
     texture_map.requires_grad = True
 
 
-def build_cameras(n_views, shuffle = True, randomize=False):
+def build_fixed_cameras(n_views, dist=3.0, shuffle = True):
 
     # Define angles for viewpoints
     x_views = (n_views // 2)
     y_views = n_views - x_views
 
-    if randomize:
-        angles_x = torch.rand(x_views) * 315  # Random angles in [0, 315) for X-axis
-        angles_y = 45 + torch.rand(y_views) * 270  # Random angles in [45, 315) for Y-axis
-    else:
-        angles_x = torch.linspace(0, 315, x_views)  # Equally spaced angles for X-axis
-        angles_y = torch.linspace(45, 315, y_views)  # Equally spaced angles for Y-axis
+    angles_x = torch.linspace(0, 315, x_views)  # Equally spaced angles for X-axis
+    angles_y = torch.linspace(45, 315, y_views)  # Equally spaced angles for Y-axis
         
     # CHANGE ANGLE RANGES?
     
@@ -130,7 +127,33 @@ def build_cameras(n_views, shuffle = True, randomize=False):
         R = RotateAxisAngle(angle, axis=axis, device=device).get_matrix()[..., :3, :3].squeeze(0)
         R_list.append(R)
         # CHANGE DISTANCE?
-        T_list.append(torch.tensor([0.0, 0.0, 3.0], device=device))
+        T_list.append(torch.tensor([0.0, 0.0, dist], device=device))
+    R_list = torch.stack(R_list, dim=0)  # (n_views, 3, 3)
+    T_list = torch.stack(T_list, dim=0).squeeze(1)  # (n_views, 3)
+
+    cameras_list = FoVPerspectiveCameras(R=R_list, T=T_list, device=device)
+
+    return cameras_list
+
+
+def build_random_cameras(n_views, dist=3.0):
+
+    elev_range = (-90, 90)
+    azim_range = (0, 360)
+    
+    elevs = torch.rand(n_views) * (elev_range[1] - elev_range[0]) - elev_range[0]
+    azims = torch.rand(n_views) * (azim_range[1] - azim_range[0]) - azim_range[0]
+
+    for i in range(n_views):
+        R, T = look_at_view_transform(
+            dist = dist,
+            elev = elevs[i],
+            azim = azims[i],
+            at=((0, 0, 0),)
+        )
+        R_list.append(R)
+        T_list.append(T)
+
     R_list = torch.stack(R_list, dim=0)  # (n_views, 3, 3)
     T_list = torch.stack(T_list, dim=0).squeeze(1)  # (n_views, 3)
 

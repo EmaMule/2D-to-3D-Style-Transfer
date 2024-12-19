@@ -9,7 +9,7 @@ import random
 
 # Import style transfer utilities
 from style_transfer import compute_perceptual_loss
-from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes, save_render, finalize_mesh, build_cameras, adjust_texture
+from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes, save_render, finalize_mesh, build_fixed_cameras, build_random_cameras, adjust_texture
 
 from torchvision import transforms
 
@@ -89,7 +89,10 @@ renderer = MeshRenderer(
 vgg = get_vgg()
 
 # Build cameras
-cameras_list = build_cameras(n_views)
+if randomize_views:
+    cameras_list = build_random_cameras(n_views)
+else:
+    cameras_list = build_fixed_cameras(n_views)
 # CAMERAS SHOULD BE RANDOM INSTEAD OF FIXED AND BATCHED?
 
 # Initialize texture optimization
@@ -100,13 +103,9 @@ optimizer = torch.optim.Adam([texture_map], lr=lr)
 
 
 # USE TWO CURRENT: ONE ALWAYS WITH STYLE AND ONE WITH THE SAME AS CONTENT
-epoch_cameras_list = cameras_list #if not randomized-->remains this
 for epoch in tqdm(range(epochs)):
 
     total_loss = 0
-
-    if randomize_views:
-        epoch_cameras_list = build_cameras(n_views=n_views, randomize=randomize_views)
 
     for i in range(math.ceil(n_views / batch_size)):
 
@@ -117,7 +116,7 @@ for epoch in tqdm(range(epochs)):
         
         # sample cameras (shuffling is done in the angles, they can be taken in order)
         batch_indexes = list(range(batch_start, batch_end))
-        batch_cameras = [epoch_cameras_list[idx] for idx in batch_indexes]
+        batch_cameras = [cameras_list[idx] for idx in batch_indexes]
 
         # Load style image
         style_tensors = load_as_tensor(style_image_path, size=size).repeat(current_batch_size, 1, 1, 1).to(device)
@@ -155,5 +154,6 @@ for epoch in tqdm(range(epochs)):
 final_cow_mesh = finalize_mesh(current_cow_mesh)
 
 # Save final optimized images
+cameras_list = build_fixed_cameras(12)
 save_render(renderer, final_cow_mesh, cameras_list, output_path+"/final_render") # fixed and not random views
 IO().save_mesh(final_cow_mesh, output_path+"/final.obj")

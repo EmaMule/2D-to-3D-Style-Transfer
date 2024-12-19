@@ -9,7 +9,7 @@ import random
 
 # Import style transfer utilities
 from style_transfer import style_transfer
-from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes, save_render, finalize_mesh, build_cameras
+from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes, save_render, finalize_mesh, build_fixed_cameras, build_random_cameras
 
 from torchvision import transforms
 
@@ -97,7 +97,11 @@ renderer = MeshRenderer(
 vgg = get_vgg()
 
 # Build cameras
-cameras_list = build_cameras(n_views)
+if randomize_views:
+    cameras_list = build_random_cameras(n_views)
+else:
+    cameras_list = build_fixed_cameras(n_views)
+
 
 # Initialize texture optimization
 current_cow_mesh = content_cow_mesh.clone()
@@ -177,5 +181,6 @@ for i in range(math.ceil(n_views / batch_size)):
 final_cow_mesh = finalize_mesh(current_cow_mesh)
 
 # Save final optimized images
+cameras_list = build_fixed_cameras(12)
 save_render(renderer, final_cow_mesh, cameras_list, output_path+"/final_render")
 IO().save_mesh(final_cow_mesh, output_path+"/final.obj")
