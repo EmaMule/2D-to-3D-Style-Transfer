@@ -80,11 +80,12 @@ original_verts, original_faces, aux = load_obj(cow_obj_path)
 verts_uvs = aux.verts_uvs[None, ...].to(device)  # (1, V, 2)
 faces_uvs = original_faces.textures_idx[None, ...].to(device)  # (1, F, 3)
 original_verts = original_verts.to(device)
+original_faces_idx = original_faces.verts_idx.to(device)
 texture_image = list(aux.texture_images.values())[0][None, ...].to(device)  # (1, H, W, 3)
 
 # Initialize textures and mesh
 original_textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=texture_image)
-content_cow_mesh = Meshes(verts=[original_verts], faces=[original_faces.verts_idx], textures=original_textures)
+content_cow_mesh = Meshes(verts=[original_verts], faces=[original_faces_idx], textures=original_textures)
 
 # Camera, rasterization, and lighting settings
 cameras = FoVPerspectiveCameras(device=device)
@@ -115,7 +116,7 @@ if optimization_target == 'texture':
     optimizer = torch.optim.Adam([current_texture_map], lr=mse_lr)
     #additional parameters:
     current_verts = original_verts
-    current_faces = original_faces #they don't change!
+    current_faces_idx = original_faces_idx #they don't change!
 
 elif optimization_target == 'mesh':
     current_verts = current_cow_mesh.verts_packed()
@@ -123,7 +124,7 @@ elif optimization_target == 'mesh':
     optimizer = torch.optim.Adam([current_verts], lr=mse_lr)
     #additional parameters:
     current_texture_map = current_cow_mesh.textures.maps_padded()
-    current_faces = original_faces #for now
+    current_faces_idx = original_faces_idx #for now
 
 
 elif optimization_target == 'both':
@@ -133,7 +134,7 @@ elif optimization_target == 'both':
     current_verts.requires_grad_(True)
     optimizer = torch.optim.Adam([current_texture_map, current_verts], lr=mse_lr)
     #additional parameters:
-    current_faces = original_faces #for now
+    current_faces_idx = original_faces_idx #for now
 
 for i in range(math.ceil(n_views / batch_size)):
 
@@ -188,7 +189,7 @@ for i in range(math.ceil(n_views / batch_size)):
 
         #done because pytorch otherwise cries
         current_textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=current_texture_map)
-        current_cow_mesh = Meshes(verts=[current_verts], faces=[current_faces.verts_idx], textures=current_textures)
+        current_cow_mesh = Meshes(verts=[current_verts], faces=[current_faces_idx], textures=current_textures)
 
         rendered_tensors, object_masks = render_meshes(renderer, current_cow_mesh, batch_cameras)
 
