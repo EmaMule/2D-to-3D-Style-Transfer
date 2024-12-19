@@ -83,7 +83,7 @@ texture_image = list(aux.texture_images.values())[0][None, ...].to(device)  # (1
 
 # Initialize textures and mesh
 original_textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=texture_image)
-content_cow_mesh = Meshes(verts=[verts.to(device)], faces=[faces.verts_idx.to(device)], textures=original_textures)
+content_cow_mesh = Meshes(verts=[original_verts.to(device)], faces=[faces.verts_idx.to(device)], textures=original_textures)
 
 # Camera, rasterization, and lighting settings
 cameras = FoVPerspectiveCameras(device=device)
@@ -110,22 +110,20 @@ current_cow_mesh = content_cow_mesh.clone()
 # Initialize texture optimization
 if optimization_target == 'texture':
     texture_map = current_cow_mesh.textures.maps_padded()
-    texture_map.requires_grad = True
+    texture_map.requires_grad(True)
     optimizer = torch.optim.Adam([texture_map], lr=mse_lr)
 
 elif optimization_target == 'mesh':
     current_verts = current_cow_mesh.verts_packed()
-    current_verts.requires_grad = True
+    current_verts.requires_grad(True)
     optimizer = torch.optim.Adam([current_verts], lr=mse_lr)
 
 elif optimization_target == 'both':
     texture_map = current_cow_mesh.textures.maps_padded()
-    texture_map.requires_grad = True
+    texture_map.requires_grad(True)
     current_verts = current_cow_mesh.verts_packed()
-    current_verts.requires_grad = True
+    current_verts.requires_grad(True)
     optimizer = torch.optim.Adam([texture_map, current_verts], lr=mse_lr)
-
-#add epochs with randomization of the cameras? It can be used to have a middle-way between the two methods
 
 for i in range(math.ceil(n_views / batch_size)):
 
@@ -177,6 +175,10 @@ for i in range(math.ceil(n_views / batch_size)):
     # Optimize the texture map in batches
     for step in range(n_mse_steps):
         optimizer.zero_grad()
+
+        current_textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=texture_map)
+        current_cow_mesh = Meshes(verts=[original_verts.to(device)], faces=[faces.verts_idx.to(device)], textures=current_textures)
+
         rendered_tensors, object_masks = render_meshes(renderer, current_cow_mesh, batch_cameras)
 
         # Compute masked MSE loss for all views in batch
