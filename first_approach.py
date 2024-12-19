@@ -40,6 +40,7 @@ parser.add_argument("--current_background", default='white', type=str, help="Typ
 parser.add_argument("--style_transfer_lr", default=0.01, type=float, help="Style Transfer Learning Rate")
 parser.add_argument("--mse_lr", default=0.01, type=float, help="2D to 3D Learning Rate")
 parser.add_argument("--randomize_views", type=bool, default=True, help="Whether or not to randomize views") #if it is of interest we might do it
+parser.add_argument("--optimization_target", type=str, default="texture", help="Decide what to optimize")
 
 args = parser.parse_args()
 
@@ -60,10 +61,12 @@ current_background = args.current_background
 mse_lr = args.mse_lr
 style_transfer_lr = args.style_transfer_lr
 randomize_views=args.randomize_views #if it will be used at some point
+optimization_target = args.optimization_target
 
 assert style_transfer_init in ['noise', 'current', 'content']
 assert content_background in ['noise', 'style', 'white']
 assert current_background in ['noise', 'style', 'white']
+assert optimization_target in ['texture', 'mesh', 'both']
 
 # Create output folder
 os.makedirs(output_path, exist_ok=True)
@@ -73,7 +76,7 @@ os.makedirs(output_path+"/2d_style_transfer", exist_ok=True)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # Load the cow mesh
-verts, faces, aux = load_obj(cow_obj_path)
+original_verts, faces, aux = load_obj(cow_obj_path)
 verts_uvs = aux.verts_uvs[None, ...].to(device)  # (1, V, 2)
 faces_uvs = faces.textures_idx[None, ...].to(device)  # (1, F, 3)
 texture_image = list(aux.texture_images.values())[0][None, ...].to(device)  # (1, H, W, 3)
@@ -102,12 +105,25 @@ if randomize_views:
 else:
     cameras_list = build_fixed_cameras(n_views)
 
+current_cow_mesh = content_cow_mesh.clone()
 
 # Initialize texture optimization
-current_cow_mesh = content_cow_mesh.clone()
-texture_map = current_cow_mesh.textures.maps_padded()
-texture_map.requires_grad = True
-optimizer = torch.optim.Adam([texture_map], lr=mse_lr)
+if optimization_target == 'texture':
+    texture_map = current_cow_mesh.textures.maps_padded()
+    texture_map.requires_grad = True
+    optimizer = torch.optim.Adam([texture_map], lr=mse_lr)
+
+elif optimization_target == 'mesh':
+    current_verts = current_cow_mesh.verts_packed()
+    current_verts.requires_grad = True
+    optimizer = torch.optim.Adam([current_verts], lr=mse_lr)
+
+elif optimization_target == 'both':
+    texture_map = current_cow_mesh.textures.maps_padded()
+    texture_map.requires_grad = True
+    current_verts = current_cow_mesh.verts_packed()
+    current_verts.requires_grad = True
+    optimizer = torch.optim.Adam([texture_map, current_verts], lr=mse_lr)
 
 #add epochs with randomization of the cameras? It can be used to have a middle-way between the two methods
 
@@ -169,7 +185,18 @@ for i in range(math.ceil(n_views / batch_size)):
 
         # LOSS OBTAINED AS AN AVERAGE OF THE STYLE TRANSFERS, DOESN'T MEAN IT'S A GOOD STYLE TRANSFER
         # SHOULD NOT "COPY" THE STYLE TRASFER IMAGE EXACTLY (UNLESS FEW VIEWS)
-        loss = torch.nn.functional.mse_loss(masked_rendered, masked_target)
+
+        if optimization_target == 'texture':
+            loss = torch.nn.functional.mse_loss(masked_rendered, masked_target)
+        
+        # add mesh optimization loss terms
+        elif optimization_target == 'mesh':
+            loss = torch.nn.functional.mse_loss(masked_rendered, masked_target)
+            loss += torch.nn.functional.mse_loss(current_verts, original_verts) # to check
+        
+        elif optimization_target == 'both':
+            loss = torch.nn.functional.mse_loss(masked_rendered, masked_target)
+            loss += torch.nn.functional.mse_loss(current_verts, original_verts) # to check
 
         # Backpropagation
         loss.backward()

@@ -136,26 +136,20 @@ def build_fixed_cameras(n_views, dist=3.0, shuffle = True):
     return cameras_list
 
 
-def build_random_cameras(n_views, dist=3.0):
+def build_random_cameras(n_views, dist=2.10):
 
-    elev_range = (-90, 90)
-    azim_range = (0, 360)
+    elev_range = (0, 360)
+    azim_range = (-180, 180)
     
-    elevs = torch.rand(n_views) * (elev_range[1] - elev_range[0]) - elev_range[0]
-    azims = torch.rand(n_views) * (azim_range[1] - azim_range[0]) - azim_range[0]
+    elevs = torch.rand(n_views) * (elev_range[1] - elev_range[0]) + elev_range[0]
+    azims = torch.rand(n_views) * (azim_range[1] - azim_range[0]) + azim_range[0]
 
-    for i in range(n_views):
-        R, T = look_at_view_transform(
-            dist = dist,
-            elev = elevs[i],
-            azim = azims[i],
-            at=((0, 0, 0),)
-        )
-        R_list.append(R)
-        T_list.append(T)
-
-    R_list = torch.stack(R_list, dim=0)  # (n_views, 3, 3)
-    T_list = torch.stack(T_list, dim=0).squeeze(1)  # (n_views, 3)
+    R_list, T_list = look_at_view_transform(
+        dist = dist,
+        elev = elevs,
+        azim = azims,
+        at=((0, 0.10, 0.25),)
+    )
 
     cameras_list = FoVPerspectiveCameras(R=R_list, T=T_list, device=device)
 
