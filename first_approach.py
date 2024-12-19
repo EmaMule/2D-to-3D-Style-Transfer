@@ -9,7 +9,7 @@ import random
 
 # Import style transfer utilities
 from style_transfer import style_transfer
-from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes, save_render, finalize_mesh, build_fixed_cameras, build_random_cameras
+from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes, save_render, finalize_mesh, build_fixed_cameras, build_random_cameras, initialize_optimizations
 
 from torchvision import transforms
 
@@ -77,15 +77,17 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # Load the cow mesh
 original_verts, original_faces, aux = load_obj(cow_obj_path)
-verts_uvs = aux.verts_uvs[None, ...].to(device)  # (1, V, 2)
-faces_uvs = original_faces.textures_idx[None, ...].to(device)  # (1, F, 3)
-original_verts = original_verts.to(device)
-original_faces_idx = original_faces.verts_idx.to(device)
+
+original_verts_uvs = aux.verts_uvs[None, ...].to(device)  # (1, V, 2)
+original_faces_uvs = original_faces.textures_idx[None, ...].to(device)  # (1, F, 3)
+original_faces = original_faces.verts_idx.to(device)
 texture_image = list(aux.texture_images.values())[0][None, ...].to(device)  # (1, H, W, 3)
 
-# Initialize textures and mesh
-original_textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=texture_image)
-content_cow_mesh = Meshes(verts=[original_verts], faces=[original_faces_idx], textures=original_textures)
+original_verts = original_verts.to(device)
+
+# Initialize content textures and mesh
+original_textures = TexturesUV(verts_uvs=original_verts_uvs, faces_uvs=original_faces_uvs, maps=texture_image)
+content_cow_mesh = Meshes(verts=[original_verts], faces=[original_faces], textures=original_textures)
 
 # Camera, rasterization, and lighting settings
 cameras = FoVPerspectiveCameras(device=device)
@@ -106,35 +108,17 @@ if randomize_views:
     cameras_list = build_random_cameras(n_views)
 else:
     cameras_list = build_fixed_cameras(n_views)
+    
+#initialize optimization based on the target (it returns the mesh to optimize etc.)
+out = initialize_optimizations(optimization_target, content_cow_mesh, mse_lr)
 
-current_cow_mesh = content_cow_mesh.clone()
-
-# Initialize texture optimization
-if optimization_target == 'texture':
-    current_texture_map = current_cow_mesh.textures.maps_padded()
-    current_texture_map.requires_grad_(True)
-    optimizer = torch.optim.Adam([current_texture_map], lr=mse_lr)
-    #additional parameters:
-    current_verts = original_verts
-    current_faces_idx = original_faces_idx #they don't change!
-
-elif optimization_target == 'mesh':
-    current_verts = current_cow_mesh.verts_packed()
-    current_verts.requires_grad_(True)
-    optimizer = torch.optim.Adam([current_verts], lr=mse_lr)
-    #additional parameters:
-    current_texture_map = current_cow_mesh.textures.maps_padded()
-    current_faces_idx = original_faces_idx #for now
-
-
-elif optimization_target == 'both':
-    current_texture_map = current_cow_mesh.textures.maps_padded()
-    current_texture_map.requires_grad_(True)
-    current_verts = current_cow_mesh.verts_packed()
-    current_verts.requires_grad_(True)
-    optimizer = torch.optim.Adam([current_texture_map, current_verts], lr=mse_lr)
-    #additional parameters:
-    current_faces_idx = original_faces_idx #for now
+current_cow_mesh = out['optimizable_mesh']
+optimizer = out['optimizer']
+texture_map = out['texture_map']
+verts = out['verts']
+faces = out['faces']
+verts_uvs = out['verts_uvs']
+faces_uvs = out['faces_uvs']
 
 for i in range(math.ceil(n_views / batch_size)):
 
@@ -188,8 +172,8 @@ for i in range(math.ceil(n_views / batch_size)):
         optimizer.zero_grad()
 
         #done because pytorch otherwise cries
-        current_textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=current_texture_map)
-        current_cow_mesh = Meshes(verts=[current_verts], faces=[current_faces_idx], textures=current_textures)
+        current_textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=texture_map)
+        current_cow_mesh = Meshes(verts=[verts], faces=[faces], textures=current_textures)
 
         rendered_tensors, object_masks = render_meshes(renderer, current_cow_mesh, batch_cameras)
 
@@ -206,11 +190,11 @@ for i in range(math.ceil(n_views / batch_size)):
         # add mesh optimization loss terms
         elif optimization_target == 'mesh':
             loss = torch.nn.functional.mse_loss(masked_rendered, masked_target)
-            loss += torch.nn.functional.mse_loss(current_verts, original_verts) # to check
+            loss += torch.nn.functional.mse_loss(verts, original_verts) + torch.nn.functional.mse_loss(verts_uvs, original_verts_uvs)
         
         elif optimization_target == 'both':
             loss = torch.nn.functional.mse_loss(masked_rendered, masked_target)
-            loss += torch.nn.functional.mse_loss(current_verts, original_verts) # to check
+            loss += 10.0*(torch.nn.functional.mse_loss(verts, original_verts) + torch.nn.functional.mse_loss(verts_uvs, original_verts_uvs))
 
         # Backpropagation
         loss.backward()

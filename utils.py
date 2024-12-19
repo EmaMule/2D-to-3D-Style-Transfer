@@ -5,6 +5,7 @@ from PIL import Image
 import os
 from pytorch3d.transforms import RotateAxisAngle
 from pytorch3d.renderer import FoVPerspectiveCameras, TexturesUV
+from pytorch3d.structures import Meshes
 from pytorch3d.renderer.cameras import look_at_view_transform
 import random
 
@@ -79,28 +80,25 @@ def save_render(renderer, meshes, cameras, path):
 
 
 def finalize_mesh(mesh):
-
-    # extract components
+    # Extract components of the mesh
     texture_map = mesh.textures.maps_padded()
     verts_uvs = mesh.textures.verts_uvs_padded()
     faces_uvs = mesh.textures.faces_uvs_padded()
 
-    # finalize texture
+    # Extract geometry
+    verts = mesh.verts_padded()  # Access the vertices
+    faces = mesh.faces_padded()  # Access the faces
+
+    # Finalize the texture
     final_texture_map = torch.clamp(texture_map, 0.0, 1.0)
 
-    # finalize geometry
+    # Build the final textures
+    current_textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=final_texture_map)
 
-    # build final mesh
-    final_mesh = mesh.clone()
-    final_mesh.textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=final_texture_map)
+    # Build the final mesh
+    final_mesh = Meshes(verts=verts, faces=faces, textures=current_textures)
 
     return final_mesh
-
-
-def adjust_texture(texture_map):
-    texture_map.requires_grad = False
-    texture_map.clamp_(0,1)
-    texture_map.requires_grad = True
 
 
 def build_fixed_cameras(n_views, dist=3.0, shuffle = True):
@@ -154,3 +152,38 @@ def build_random_cameras(n_views, dist=2.10):
     cameras_list = FoVPerspectiveCameras(R=R_list, T=T_list, device=device)
 
     return cameras_list
+
+
+def initialize_optimizations(optimization_target, mesh, lr):
+
+    optimizable_mesh = mesh.clone()
+
+    texture_map = optimizable_mesh.textures.maps_padded()
+    verts = optimizable_mesh.verts_packed()
+    faces = optimizable_mesh.faces_packed()
+    verts_uvs = optimizable_mesh.textures.verts_uvs_padded()
+    faces_uvs = optimizable_mesh.textures.faces_uvs_padded()
+    
+    if optimization_target == 'texture':
+        texture_map.requires_grad_(True)
+        optimizer = torch.optim.Adam([texture_map], lr=lr)
+
+    elif optimization_target == 'mesh':
+        verts.requires_grad_(True)
+        verts_uvs.requires_grad_(True)
+        optimizer = torch.optim.Adam([verts, verts_uvs], lr=lr)
+
+    elif optimization_target == 'both':
+        texture_map.requires_grad_(True)
+        verts.requires_grad_(True)
+        verts_uvs.requires_grad_(True)
+        optimizer = torch.optim.Adam([verts, verts_uvs, texture_map], lr = lr)
+    
+    return {'optimizable_mesh': optimizable_mesh,
+            'optimizer': optimizer,
+            'texture_map': texture_map,
+            'verts': verts,
+            'faces': faces,
+            'verts_uvs': verts_uvs,
+            'faces_uvs': faces_uvs
+            }
