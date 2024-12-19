@@ -9,7 +9,7 @@ import random
 
 # Import style transfer utilities
 from style_transfer import compute_perceptual_loss
-from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes, save_render, finalize_mesh, build_fixed_cameras, build_random_cameras
+from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes, save_render, finalize_mesh, build_fixed_cameras, build_random_cameras, initialize_optimizations
 
 from torchvision import transforms
 
@@ -18,6 +18,8 @@ from pytorch3d.io import load_obj
 from pytorch3d.io import IO
 from pytorch3d.structures import Meshes
 from pytorch3d.renderer import TexturesUV, FoVPerspectiveCameras, RasterizationSettings, MeshRenderer, MeshRasterizer, SoftPhongShader, AmbientLights
+
+from pytorch3d.loss import mesh_edge_loss, mesh_laplacian_smoothing, mesh_normal_consistency
 
 import argparse
 
@@ -36,6 +38,11 @@ parser.add_argument("--content_background", default='white', type=str, help="Typ
 parser.add_argument("--current_background", default='white', type=str, help="Type of background for the current image")
 parser.add_argument("--lr", default=0.01, type=float, help="Style Transfer Learning Rate")
 parser.add_argument("--randomize_views", type=bool, default=True, help="Whether or not to randomize views")
+parser.add_argument("--optimization_target", type=str, default="texture", help="Decide what to optimize")
+parser.add_argument("--mesh_edge_loss_weight", type=float, default=3.0, help="Weight of edge loss (enforces admissable weights for the edges)")
+parser.add_argument("--mesh_laplacian_smoothing_weight", type=float, default=3.0, help="Weight of smoothing (smooth surface)")
+parser.add_argument("--mesh_normal_consistency_weight", type=float, default=3.0, help="Weight of normal consistency")
+
 args = parser.parse_args()
 
 # Parse arguments
@@ -52,10 +59,15 @@ content_background = args.content_background
 current_background = args.current_background
 lr = args.lr
 randomize_views=args.randomize_views
+optimization_target = args.optimization_target
+
+mesh_edge_loss_weight = args.mesh_edge_loss_weight
+mesh_laplacian_smoothing_weight = args.mesh_laplacian_smoothing_weight
+mesh_normal_consistency_weight = args.mesh_normal_consistency_weight
 
 assert content_background in ['noise', 'style', 'white']
 assert current_background in ['noise', 'style', 'white']
-
+assert optimization_target in ['texture', 'mesh', 'both']
 # Create output folder
 os.makedirs(output_path, exist_ok=True)
 os.makedirs(output_path+"/current_images", exist_ok=True)
@@ -64,14 +76,18 @@ os.makedirs(output_path+"/current_images", exist_ok=True)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # Load the cow mesh
-verts, faces, aux = load_obj(cow_obj_path)
-verts_uvs = aux.verts_uvs[None, ...].to(device)  # (1, V, 2)
-faces_uvs = faces.textures_idx[None, ...].to(device)  # (1, F, 3)
+original_verts, original_faces, aux = load_obj(cow_obj_path)
+
+original_verts_uvs = aux.verts_uvs[None, ...].to(device)  # (1, V, 2)
+original_faces_uvs = original_faces.textures_idx[None, ...].to(device)  # (1, F, 3)
+original_faces = original_faces.verts_idx.to(device)
 texture_image = list(aux.texture_images.values())[0][None, ...].to(device)  # (1, H, W, 3)
 
-# Initialize textures and mesh
-original_textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=texture_image)
-content_cow_mesh = Meshes(verts=[verts.to(device)], faces=[faces.verts_idx.to(device)], textures=original_textures)
+original_verts = original_verts.to(device)
+
+# Initialize content textures and mesh
+original_textures = TexturesUV(verts_uvs=original_verts_uvs, faces_uvs=original_faces_uvs, maps=texture_image)
+content_cow_mesh = Meshes(verts=[original_verts], faces=[original_faces], textures=original_textures)
 
 # Camera, rasterization, and lighting settings
 cameras = FoVPerspectiveCameras(device=device)
@@ -87,18 +103,26 @@ renderer = MeshRenderer(
 # Load VGG model
 vgg = get_vgg()
 
+# Load VGG model
+vgg = get_vgg()
+
 # Build cameras
 if randomize_views:
     cameras_list = build_random_cameras(n_views)
 else:
     cameras_list = build_fixed_cameras(n_views)
-# CAMERAS SHOULD BE RANDOM INSTEAD OF FIXED AND BATCHED?
 
-# Initialize texture optimization
-current_cow_mesh = content_cow_mesh.clone()
-texture_map = current_cow_mesh.textures.maps_padded()
-texture_map.requires_grad = True
-optimizer = torch.optim.Adam([texture_map], lr=lr)
+#initialize optimization based on the target (it returns the mesh to optimize etc.)
+out = initialize_optimizations(optimization_target, content_cow_mesh, lr)
+
+#retrieve outputs (done like this for clarity)
+current_cow_mesh = out['optimizable_mesh']
+optimizer = out['optimizer']
+texture_map = out['texture_map']
+verts = out['verts']
+faces = out['faces']
+verts_uvs = out['verts_uvs']
+faces_uvs = out['faces_uvs']
 
 
 # USE TWO CURRENT: ONE ALWAYS WITH STYLE AND ONE WITH THE SAME AS CONTENT
@@ -129,15 +153,32 @@ for epoch in tqdm(range(epochs)):
         # else content_background == 'white' does nothing
 
         # Render current images for all views (only if used)
-        # adjust_texture(texture_map)
+
+        #done because pytorch otherwise cries
+        current_textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=texture_map)
+        current_cow_mesh = Meshes(verts=[verts], faces=[faces], textures=current_textures)
+
         current_tensors, current_masks = render_meshes(renderer, current_cow_mesh, batch_cameras)
         if current_background == 'noise':
             current_tensors = apply_background(current_tensors, current_masks, torch.rand(style_tensors.shape, device=device))
         elif current_background == 'style':
             current_tensors = apply_background(current_tensors, current_masks, style_tensors)
         # else current_background == 'white' does nothing
-
-        loss = compute_perceptual_loss(current_tensors, content_tensors, style_tensors, vgg, style_weight=style_weight, content_weight=content_weight)
+        
+        if optimization_target == 'texture':
+            loss = compute_perceptual_loss(current_tensors, content_tensors, style_tensors, vgg, style_weight=style_weight, content_weight=content_weight)
+        elif optimization_target=='mesh':
+            loss = compute_perceptual_loss(current_tensors, content_tensors, style_tensors, vgg, style_weight=style_weight, content_weight=content_weight)
+            loss += 10.0*(torch.nn.functional.mse_loss(verts, original_verts) + torch.nn.functional.mse_loss(verts_uvs, original_verts_uvs))
+            loss+= mesh_edge_loss_weight*mesh_edge_loss(current_cow_mesh)
+            loss+= mesh_laplacian_smoothing_weight*mesh_laplacian_smoothing(current_cow_mesh)
+            loss+= mesh_normal_consistency_weight*mesh_normal_consistency(current_cow_mesh)
+        elif optimization_target=='both':
+            loss = compute_perceptual_loss(current_tensors, content_tensors, style_tensors, vgg, style_weight=style_weight, content_weight=content_weight)
+            loss += 10.0*(torch.nn.functional.mse_loss(verts, original_verts) + torch.nn.functional.mse_loss(verts_uvs, original_verts_uvs))
+            loss+= mesh_edge_loss_weight*mesh_edge_loss(current_cow_mesh)
+            loss+= mesh_laplacian_smoothing_weight*mesh_laplacian_smoothing(current_cow_mesh)
+            loss+= mesh_normal_consistency_weight*mesh_normal_consistency(current_cow_mesh)
 
         # Save styled images
         for j, current_tensor in enumerate(current_tensors):

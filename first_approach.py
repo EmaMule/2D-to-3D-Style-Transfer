@@ -196,17 +196,17 @@ for i in range(math.ceil(n_views / batch_size)):
         # add mesh optimization loss terms
         elif optimization_target == 'mesh':
             loss = torch.nn.functional.mse_loss(masked_rendered, masked_target)
-            #loss += torch.nn.functional.mse_loss(verts, original_verts) + torch.nn.functional.mse_loss(verts_uvs, original_verts_uvs)
+            loss += 10.0*(torch.nn.functional.mse_loss(verts, original_verts) + torch.nn.functional.mse_loss(verts_uvs, original_verts_uvs))
             loss+= mesh_edge_loss_weight*mesh_edge_loss(current_cow_mesh)
             loss+= mesh_laplacian_smoothing_weight*mesh_laplacian_smoothing(current_cow_mesh)
-            loss+= mesh_normal_consistency_weight*mesh_normal_consistency_weight(current_cow_mesh)
+            loss+= mesh_normal_consistency_weight*mesh_normal_consistency(current_cow_mesh)
         
         elif optimization_target == 'both':
             loss = torch.nn.functional.mse_loss(masked_rendered, masked_target)
-            #loss += torch.nn.functional.mse_loss(verts, original_verts) + torch.nn.functional.mse_loss(verts_uvs, original_verts_uvs)
+            loss += 10.0*(torch.nn.functional.mse_loss(verts, original_verts) + torch.nn.functional.mse_loss(verts_uvs, original_verts_uvs))
             loss+= mesh_edge_loss_weight*mesh_edge_loss(current_cow_mesh)
             loss+= mesh_laplacian_smoothing_weight*mesh_laplacian_smoothing(current_cow_mesh)
-            loss+= mesh_normal_consistency_weight*mesh_normal_consistency_weight(current_cow_mesh)
+            loss+= mesh_normal_consistency_weight*mesh_normal_consistency(current_cow_mesh)
 
         # Backpropagation
         loss.backward()
