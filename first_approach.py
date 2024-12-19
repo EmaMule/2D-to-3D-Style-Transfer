@@ -17,8 +17,9 @@ from torchvision import transforms
 from pytorch3d.io import load_obj
 from pytorch3d.io import IO
 from pytorch3d.structures import Meshes
-from pytorch3d.renderer import TexturesUV, FoVPerspectiveCameras, RasterizationSettings, MeshRenderer, MeshRasterizer, SoftPhongShader, PointLights, AmbientLights
-from pytorch3d.transforms import RotateAxisAngle
+from pytorch3d.renderer import TexturesUV, FoVPerspectiveCameras, RasterizationSettings, MeshRenderer, MeshRasterizer, SoftPhongShader, AmbientLights
+
+from pytorch3d.loss import mesh_edge_loss, mesh_laplacian_smoothing, mesh_normal_consistency
 
 import argparse
 
@@ -41,6 +42,9 @@ parser.add_argument("--style_transfer_lr", default=0.01, type=float, help="Style
 parser.add_argument("--mse_lr", default=0.01, type=float, help="2D to 3D Learning Rate")
 parser.add_argument("--randomize_views", type=bool, default=True, help="Whether or not to randomize views") #if it is of interest we might do it
 parser.add_argument("--optimization_target", type=str, default="texture", help="Decide what to optimize")
+parser.add_argument("--mesh_edge_loss_weight", type=float, default=3.0, help="Weight of edge loss (enforces admissable weights for the edges)")
+parser.add_argument("--mesh_laplacian_smoothing_weight", type=float, default=3.0, help="Weight of smoothing (smooth surface)")
+parser.add_argument("--mesh_normal_consistency_weight", type=float, default=3.0, help="Weight of normal consistency")
 
 args = parser.parse_args()
 
@@ -60,8 +64,12 @@ content_background = args.content_background
 current_background = args.current_background
 mse_lr = args.mse_lr
 style_transfer_lr = args.style_transfer_lr
-randomize_views=args.randomize_views #if it will be used at some point
+randomize_views=args.randomize_views
 optimization_target = args.optimization_target
+
+mesh_edge_loss_weight = args.mesh_edge_loss_weight
+mesh_laplacian_smoothing_weight = args.mesh_laplacian_smoothing_weight
+mesh_normal_consistency_weight = args.mesh_normal_consistency_weight
 
 assert style_transfer_init in ['noise', 'current', 'content']
 assert content_background in ['noise', 'style', 'white']
@@ -112,6 +120,7 @@ else:
 #initialize optimization based on the target (it returns the mesh to optimize etc.)
 out = initialize_optimizations(optimization_target, content_cow_mesh, mse_lr)
 
+#retrieve outputs (done like this for clarity)
 current_cow_mesh = out['optimizable_mesh']
 optimizer = out['optimizer']
 texture_map = out['texture_map']
@@ -181,20 +190,23 @@ for i in range(math.ceil(n_views / batch_size)):
         masked_rendered = rendered_tensors * object_masks  # Shape: [batch_size, C, H, W]
         masked_target = applied_style_tensors * object_masks  # Shape: [batch_size, C, H, W]
 
-        # LOSS OBTAINED AS AN AVERAGE OF THE STYLE TRANSFERS, DOESN'T MEAN IT'S A GOOD STYLE TRANSFER
-        # SHOULD NOT "COPY" THE STYLE TRASFER IMAGE EXACTLY (UNLESS FEW VIEWS)
-
         if optimization_target == 'texture':
             loss = torch.nn.functional.mse_loss(masked_rendered, masked_target)
         
         # add mesh optimization loss terms
         elif optimization_target == 'mesh':
             loss = torch.nn.functional.mse_loss(masked_rendered, masked_target)
-            loss += torch.nn.functional.mse_loss(verts, original_verts) + torch.nn.functional.mse_loss(verts_uvs, original_verts_uvs)
+            #loss += torch.nn.functional.mse_loss(verts, original_verts) + torch.nn.functional.mse_loss(verts_uvs, original_verts_uvs)
+            loss+= mesh_edge_loss_weight*mesh_edge_loss(current_cow_mesh)
+            loss+= mesh_laplacian_smoothing_weight*mesh_laplacian_smoothing(current_cow_mesh)
+            loss+= mesh_normal_consistency_weight*mesh_normal_consistency_weight(current_cow_mesh)
         
         elif optimization_target == 'both':
             loss = torch.nn.functional.mse_loss(masked_rendered, masked_target)
-            loss += 10.0*(torch.nn.functional.mse_loss(verts, original_verts) + torch.nn.functional.mse_loss(verts_uvs, original_verts_uvs))
+            #loss += torch.nn.functional.mse_loss(verts, original_verts) + torch.nn.functional.mse_loss(verts_uvs, original_verts_uvs)
+            loss+= mesh_edge_loss_weight*mesh_edge_loss(current_cow_mesh)
+            loss+= mesh_laplacian_smoothing_weight*mesh_laplacian_smoothing(current_cow_mesh)
+            loss+= mesh_normal_consistency_weight*mesh_normal_consistency_weight(current_cow_mesh)
 
         # Backpropagation
         loss.backward()

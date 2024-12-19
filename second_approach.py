@@ -9,7 +9,7 @@ import random
 
 # Import style transfer utilities
 from style_transfer import compute_perceptual_loss
-from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes, save_render, finalize_mesh, build_fixed_cameras, build_random_cameras, adjust_texture
+from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes, save_render, finalize_mesh, build_fixed_cameras, build_random_cameras
 
 from torchvision import transforms
 
@@ -17,8 +17,7 @@ from torchvision import transforms
 from pytorch3d.io import load_obj
 from pytorch3d.io import IO
 from pytorch3d.structures import Meshes
-from pytorch3d.renderer import TexturesUV, FoVPerspectiveCameras, RasterizationSettings, MeshRenderer, MeshRasterizer, SoftPhongShader, PointLights, AmbientLights
-from pytorch3d.transforms import RotateAxisAngle
+from pytorch3d.renderer import TexturesUV, FoVPerspectiveCameras, RasterizationSettings, MeshRenderer, MeshRasterizer, SoftPhongShader, AmbientLights
 
 import argparse
 
