@@ -110,19 +110,19 @@ current_cow_mesh = content_cow_mesh.clone()
 # Initialize texture optimization
 if optimization_target == 'texture':
     texture_map = current_cow_mesh.textures.maps_padded()
-    texture_map.requires_grad(True)
+    texture_map.requires_grad_(True)
     optimizer = torch.optim.Adam([texture_map], lr=mse_lr)
 
 elif optimization_target == 'mesh':
     current_verts = current_cow_mesh.verts_packed()
-    current_verts.requires_grad(True)
+    current_verts.requires_grad_(True)
     optimizer = torch.optim.Adam([current_verts], lr=mse_lr)
 
 elif optimization_target == 'both':
     texture_map = current_cow_mesh.textures.maps_padded()
-    texture_map.requires_grad(True)
+    texture_map.requires_grad_(True)
     current_verts = current_cow_mesh.verts_packed()
-    current_verts.requires_grad(True)
+    current_verts.requires_grad_(True)
     optimizer = torch.optim.Adam([texture_map, current_verts], lr=mse_lr)
 
 for i in range(math.ceil(n_views / batch_size)):
