@@ -205,21 +205,21 @@ def compute_first_approach_loss(rendered, masks, rendered_target, verts, target_
     rendered_target = rendered_target * masks  # Shape: [batch_size, C, H, W]
 
     if opt_type == 'texture':
-        loss = F.mse_loss(masked_rendered, masked_target) #loss weight ignored (no interest)
+        loss = F.mse_loss(rendered, rendered_target) #loss weight ignored (no interest)
     
     # add mesh optimization loss terms
     elif opt_type == 'mesh':
-        loss = weights['main_loss_weight'] * F.mse_loss(masked_rendered, masked_target)
-        loss += weights['mesh_verts_weight'] * F.mse_loss(verts, original_verts)
-        loss += weights['mesh_verts_weight'] * F.mse_loss(verts_uvs, original_verts_uvs)
+        loss = weights['main_loss_weight'] * F.mse_loss(rendered, rendered_target)
+        loss += weights['mesh_verts_weight'] * F.mse_loss(verts, target_verts)
+        loss += weights['mesh_verts_weight'] * F.mse_loss(verts_uvs, target_verts_uvs)
         loss += weights['mesh_edge_loss_weight'] * mesh_edge_loss(mesh)
         loss += weights['mesh_laplacian_smoothing_weight'] * mesh_laplacian_smoothing(mesh)
         loss += weights['mesh_normal_consistency_weight'] * mesh_normal_consistency(mesh)
     
     elif opt_type == 'both':
-        loss = weights['main_loss_weight'] * F.mse_loss(masked_rendered, masked_target)
-        loss += weights['mesh_verts_weight'] * F.mse_loss(verts, original_verts)
-        loss += weights['mesh_verts_weight'] * F.mse_loss(verts_uvs, original_verts_uvs)
+        loss = weights['main_loss_weight'] * F.mse_loss(rendered, rendered_target)
+        loss += weights['mesh_verts_weight'] * F.mse_loss(verts, target_verts)
+        loss += weights['mesh_verts_weight'] * F.mse_loss(verts_uvs, target_verts_uvs)
         loss += weights['mesh_edge_loss_weight'] * mesh_edge_loss(mesh)
         loss += weights['mesh_laplacian_smoothing_weight'] * mesh_laplacian_smoothing(mesh)
         loss += weights['mesh_normal_consistency_weight'] * mesh_normal_consistency(mesh)
