@@ -18,8 +18,18 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 # Helper function to blend image with background
-def apply_background(tensors, masks, backgrounds):
-    return tensors * masks + backgrounds * (1 - masks)
+def apply_background(tensors, masks, background_type = 'noise', background = None):
+
+    if background_type == 'noise':
+        backgrounds = torch.rand(tensors.shape, device = device)
+        return tensors * masks + backgrounds * (1 - masks)
+
+    elif background_type == 'style':
+        backgrounds = background
+        return tensors * masks + background * (1 - masks)
+
+    elif background_type == 'white':
+        return tensors
 
 
 # Load and preprocess the images
@@ -174,14 +184,13 @@ def setup_optimizations(optimization_target, mesh, lr):
 
     elif optimization_target == 'mesh':
         verts.requires_grad_(True)
-        verts_uvs.requires_grad_(True)
-        optimizer = torch.optim.Adam([verts, verts_uvs], lr=lr)
+        # optimizing verts_uv doesn't get good results
+        optimizer = torch.optim.Adam([verts], lr=lr)
 
     elif optimization_target == 'both':
         texture_map.requires_grad_(True)
         verts.requires_grad_(True)
-        verts_uvs.requires_grad_(True)
-        optimizer = torch.optim.Adam([verts, verts_uvs, texture_map], lr = lr)
+        optimizer = torch.optim.Adam([verts, texture_map], lr = lr)
     
     return {'optimizable_mesh': optimizable_mesh,
             'optimizer': optimizer,
@@ -199,7 +208,7 @@ def build_mesh(verts_uvs, faces_uvs, texture_map, verts, faces):
     return mesh
 
 
-def compute_first_approach_loss(rendered, masks, target_rendered, verts, target_verts, verts_uvs, target_verts_uvs, mesh, weights, opt_type):
+def compute_first_approach_loss(rendered, masks, target_rendered, verts, target_verts, mesh, weights, opt_type):
 
     # Compute masked MSE loss for all views in batch
     rendered = rendered * masks  # Shape: [batch_size, C, H, W]
@@ -212,7 +221,6 @@ def compute_first_approach_loss(rendered, masks, target_rendered, verts, target_
     elif opt_type == 'mesh':
         loss = weights['main_loss_weight'] * F.mse_loss(rendered, target_rendered)
         loss += weights['mesh_verts_weight'] * F.mse_loss(verts, target_verts)
-        loss += weights['mesh_verts_weight'] * F.mse_loss(verts_uvs, target_verts_uvs)
         loss += weights['mesh_edge_loss_weight'] * mesh_edge_loss(mesh)
         loss += weights['mesh_laplacian_smoothing_weight'] * mesh_laplacian_smoothing(mesh)
         loss += weights['mesh_normal_consistency_weight'] * mesh_normal_consistency(mesh)
@@ -220,7 +228,6 @@ def compute_first_approach_loss(rendered, masks, target_rendered, verts, target_
     elif opt_type == 'both':
         loss = weights['main_loss_weight'] * F.mse_loss(rendered, target_rendered)
         loss += weights['mesh_verts_weight'] * F.mse_loss(verts, target_verts)
-        loss += weights['mesh_verts_weight'] * F.mse_loss(verts_uvs, target_verts_uvs)
         loss += weights['mesh_edge_loss_weight'] * mesh_edge_loss(mesh)
         loss += weights['mesh_laplacian_smoothing_weight'] * mesh_laplacian_smoothing(mesh)
         loss += weights['mesh_normal_consistency_weight'] * mesh_normal_consistency(mesh)
@@ -228,7 +235,7 @@ def compute_first_approach_loss(rendered, masks, target_rendered, verts, target_
     return loss
 
 
-def compute_second_approach_loss(current, content, style, model, style_weight, content_weight, verts, target_verts, verts_uvs, target_verts_uvs, mesh, weights, opt_type):
+def compute_second_approach_loss(current, content, style, model, style_weight, content_weight, verts, target_verts, mesh, weights, opt_type):
 
     if opt_type == 'texture':
         loss = compute_perceptual_loss(current, content, style, model, style_weight=style_weight, content_weight=content_weight)
@@ -236,7 +243,6 @@ def compute_second_approach_loss(current, content, style, model, style_weight, c
     elif opt_type=='mesh':
         loss =  weights['main_loss_weight'] * compute_perceptual_loss(current, content, style, model, style_weight=style_weight, content_weight=content_weight)
         loss += weights['mesh_verts_weight'] * F.mse_loss(verts, target_verts) 
-        loss += weights['mesh_verts_weight'] * F.mse_loss(verts_uvs, target_verts_uvs)
         loss += weights['mesh_edge_loss_weight'] * mesh_edge_loss(mesh)
         loss += weights['mesh_laplacian_smoothing_weight'] * mesh_laplacian_smoothing(mesh)
         loss += weights['mesh_normal_consistency_weight'] * mesh_normal_consistency(mesh)
@@ -244,7 +250,6 @@ def compute_second_approach_loss(current, content, style, model, style_weight, c
     elif opt_type=='both':
         loss =  weights['main_loss_weight'] * compute_perceptual_loss(current, content, style, model, style_weight=style_weight, content_weight=content_weight)
         loss += weights['mesh_verts_weight'] * F.mse_loss(verts, target_verts)
-        loss += weights['mesh_verts_weight'] * F.mse_loss(verts_uvs, target_verts_uvs)
         loss += weights['mesh_edge_loss_weight'] * mesh_edge_loss(mesh)
         loss += weights['mesh_laplacian_smoothing_weight'] * mesh_laplacian_smoothing(mesh)
         loss += weights['mesh_normal_consistency_weight'] * mesh_normal_consistency(mesh)

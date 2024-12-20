@@ -140,11 +140,7 @@ for epoch in tqdm(range(epochs)):
 
         # Render content images for all views
         content_tensors, content_masks = render_meshes(renderer, content_cow_mesh, batch_cameras)
-        if content_background == 'noise':
-            content_tensors = apply_background(content_tensors, content_masks, torch.rand(style_tensors.shape, device = device))
-        elif content_background == 'style':
-            content_tensors = apply_background(content_tensors, content_masks, style_tensors)
-        # else content_background == 'white' does nothing
+        content_tensors = apply_background(content_tensors, content_masks, background_type=content_background, background=style_tensors)
 
         #done because pytorch otherwise cries
         current_cow_mesh = build_mesh(verts_uvs, faces_uvs, texture_map, verts, faces)
@@ -165,8 +161,6 @@ for epoch in tqdm(range(epochs)):
             content_weight = content_weight,
             verts = verts,
             target_verts = original_verts,
-            verts_uvs = verts_uvs,
-            target_verts_uvs = original_verts_uvs,
             mesh = current_cow_mesh,
             weights = loss_weights,
             opt_type = optimization_target

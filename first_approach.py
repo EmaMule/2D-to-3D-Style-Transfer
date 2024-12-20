@@ -126,6 +126,8 @@ faces = out['faces']
 verts_uvs = out['verts_uvs']
 faces_uvs = out['faces_uvs']
 
+# SHOULD COMPUTE ALL 2D TRANSFORM FIRST AND THEN LEARN WITH BATCHES FOR A FEW ITERATIONS?
+
 for i in range(math.ceil(n_views / batch_size)):
 
     print(f"Batch {i+1} of {math.ceil(n_views / batch_size)}")
@@ -143,6 +145,8 @@ for i in range(math.ceil(n_views / batch_size)):
 
     # Render content images for all views
     content_tensors, content_masks = render_meshes(renderer, content_cow_mesh, batch_cameras)
+
+    content_tensors = apply_background(content_tensors, content_masks, background_type=content_background, background=style_tensors)
 
     if content_background == 'noise':
         content_tensors = apply_background(content_tensors, content_masks, torch.rand(style_tensors.shape, device = device))
@@ -188,11 +192,9 @@ for i in range(math.ceil(n_views / batch_size)):
         loss = compute_first_approach_loss(
             rendered = rendered_tensors,
             masks = object_masks,
-            rendered_target = applied_style_tensors, 
+            target_rendered = applied_style_tensors, 
             verts = verts, 
             target_verts = original_verts, 
-            verts_uvs = verts_uvs, 
-            target_verts_uvs = original_verts_uvs,
             mesh = current_cow_mesh, 
             weights = loss_weights, 
             opt_type = optimization_target
