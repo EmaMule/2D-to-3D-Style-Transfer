@@ -14,6 +14,8 @@ from utils import *
 
 from torchvision import transforms
 
+import torch.nn.functional as F
+
 # Import PyTorch3D utilities
 from pytorch3d.io import load_obj, IO
 from pytorch3d.structures import Meshes
@@ -27,6 +29,7 @@ parser.add_argument("--obj_path", default="./objects/cow_mesh/cow.obj", type=str
 parser.add_argument("--style_path", default="./imgs/Style_1.jpg", type=str, help="Path to the style image")
 parser.add_argument("--style_weight", default=1e6, type=float, help="Weight of the style loss")
 parser.add_argument("--content_weight", default=1.0, type=float, help="Weight of the content loss")
+parser.add_argument("--resize_texture", default=True, type=bool, help="Whether to resize the texture to the same size of the images")
 parser.add_argument("--size", default=768, type=int, help="Dimension of the images") # (default value is texture resolution)
 parser.add_argument("--output_path", default="/content/output_second", type=str, help="Output folder path")
 parser.add_argument("--batch_size", default=4, type=int, help="Batch size")
@@ -50,6 +53,7 @@ n_views = args.n_views
 epochs = args.epochs
 content_weight = args.content_weight
 style_weight = args.style_weight
+resize_texture = args.resize_texture
 size = args.size
 output_path = args.output_path
 batch_size = args.batch_size
@@ -81,6 +85,9 @@ original_verts_uvs = aux.verts_uvs[None, ...].to(device)  # (1, V, 2)
 original_faces_uvs = original_faces.textures_idx[None, ...].to(device)  # (1, F, 3)
 original_faces = original_faces.verts_idx.to(device)
 texture_image = list(aux.texture_images.values())[0][None, ...].to(device)  # (1, H, W, 3)
+
+if resize_texture:
+    texture_image = F.interpolate(texture_image,size=size,mode='bilinear',align_corners=False)
 
 original_verts = original_verts.to(device)
 
