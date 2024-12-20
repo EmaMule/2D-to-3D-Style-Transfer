@@ -148,27 +148,16 @@ for i in range(math.ceil(n_views / batch_size)):
 
     content_tensors = apply_background(content_tensors, content_masks, background_type=content_background, background=style_tensors)
 
-    if content_background == 'noise':
-        content_tensors = apply_background(content_tensors, content_masks, torch.rand(style_tensors.shape, device = device))
-    elif content_background == 'style':
-        content_tensors = apply_background(content_tensors, content_masks, style_tensors)
-    # else content_background == 'white' does nothing
-
     # Initialize 2d style trasfer tensors
     if style_transfer_init == 'noise':
         applied_style_tensors = torch.rand(content_tensors.shape, device=device)
     elif style_transfer_init == 'content':
         applied_style_tensors = content_tensors
     elif style_transfer_init == 'current':
-
         # Render current images for all views (only if used)
         current_cow_mesh = build_mesh(verts_uvs, faces_uvs, texture_map, verts, faces)
         current_tensors, current_masks = render_meshes(renderer, current_cow_mesh, batch_cameras)
-        if current_background == 'noise':
-            current_tensors = apply_background(current_tensors, current_masks, torch.rand(style_tensors.shape, device=device))
-        elif current_background == 'style':
-            current_tensors = apply_background(current_tensors, current_masks, style_tensors)
-        # else current_background == 'white' does nothing
+        current_tensors = apply_background(current_tensors, current_masks, background_type=current_background, background=style_tensors)
         applied_style_tensors = current_tensors
 
     # Perform batch style transfer

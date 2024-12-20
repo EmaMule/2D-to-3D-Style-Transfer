@@ -146,11 +146,7 @@ for epoch in tqdm(range(epochs)):
         current_cow_mesh = build_mesh(verts_uvs, faces_uvs, texture_map, verts, faces)
 
         current_tensors, current_masks = render_meshes(renderer, current_cow_mesh, batch_cameras)
-        if current_background == 'noise':
-            current_tensors = apply_background(current_tensors, current_masks, torch.rand(style_tensors.shape, device=device))
-        elif current_background == 'style':
-            current_tensors = apply_background(current_tensors, current_masks, style_tensors)
-        # else current_background == 'white' does nothing
+        current_tensors = apply_background(current_tensors, current_masks, background_type=current_background, background=style_tensors)
 
         loss = compute_second_approach_loss(
             current = current_tensors,
