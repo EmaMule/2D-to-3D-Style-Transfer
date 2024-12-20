@@ -145,7 +145,6 @@ for i in range(math.ceil(n_views / batch_size)):
 
     # Render content images for all views
     content_tensors, content_masks = render_meshes(renderer, content_cow_mesh, batch_cameras)
-
     content_tensors = apply_background(content_tensors, content_masks, background_type=content_background, background=style_tensors)
 
     # Initialize 2d style trasfer tensors
@@ -154,7 +153,6 @@ for i in range(math.ceil(n_views / batch_size)):
     elif style_transfer_init == 'content':
         applied_style_tensors = content_tensors
     elif style_transfer_init == 'current':
-        # Render current images for all views (only if used)
         current_cow_mesh = build_mesh(verts_uvs, faces_uvs, texture_map, verts, faces)
         current_tensors, current_masks = render_meshes(renderer, current_cow_mesh, batch_cameras)
         current_tensors = apply_background(current_tensors, current_masks, background_type=current_background, background=style_tensors)

@@ -144,7 +144,6 @@ for epoch in tqdm(range(epochs)):
 
         #done because pytorch otherwise cries
         current_cow_mesh = build_mesh(verts_uvs, faces_uvs, texture_map, verts, faces)
-
         current_tensors, current_masks = render_meshes(renderer, current_cow_mesh, batch_cameras)
         current_tensors = apply_background(current_tensors, current_masks, background_type=current_background, background=style_tensors)
 
