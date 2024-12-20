@@ -158,7 +158,7 @@ for epoch in tqdm(range(epochs)):
 
         loss = compute_second_approach_loss(
             current = current_tensors,
-            content = content_tensorsm,
+            content = content_tensors,
             style = style_tensors,
             model = vgg,
             style_weight = style_weight,

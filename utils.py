@@ -10,6 +10,7 @@ from pytorch3d.structures import Meshes
 from pytorch3d.renderer.cameras import look_at_view_transform
 import random
 
+from style_transfer import *
 from pytorch3d.loss import mesh_edge_loss, mesh_laplacian_smoothing, mesh_normal_consistency
 
 # Check if CUDA is available
@@ -198,18 +199,18 @@ def build_mesh(verts_uvs, faces_uvs, texture_map, verts, faces):
     return mesh
 
 
-def compute_first_approach_loss(rendered, masks, rendered_target, verts, target_verts, verts_uvs, target_verts_uvs, mesh, weights, opt_type):
+def compute_first_approach_loss(rendered, masks, target_rendered, verts, target_verts, verts_uvs, target_verts_uvs, mesh, weights, opt_type):
 
     # Compute masked MSE loss for all views in batch
     rendered = rendered * masks  # Shape: [batch_size, C, H, W]
-    rendered_target = rendered_target * masks  # Shape: [batch_size, C, H, W]
+    target_rendered = target_rendered * masks  # Shape: [batch_size, C, H, W]
 
     if opt_type == 'texture':
-        loss = F.mse_loss(rendered, rendered_target) #loss weight ignored (no interest)
+        loss = F.mse_loss(rendered, target_rendered) #loss weight ignored (no interest)
     
     # add mesh optimization loss terms
     elif opt_type == 'mesh':
-        loss = weights['main_loss_weight'] * F.mse_loss(rendered, rendered_target)
+        loss = weights['main_loss_weight'] * F.mse_loss(rendered, target_rendered)
         loss += weights['mesh_verts_weight'] * F.mse_loss(verts, target_verts)
         loss += weights['mesh_verts_weight'] * F.mse_loss(verts_uvs, target_verts_uvs)
         loss += weights['mesh_edge_loss_weight'] * mesh_edge_loss(mesh)
@@ -217,7 +218,7 @@ def compute_first_approach_loss(rendered, masks, rendered_target, verts, target_
         loss += weights['mesh_normal_consistency_weight'] * mesh_normal_consistency(mesh)
     
     elif opt_type == 'both':
-        loss = weights['main_loss_weight'] * F.mse_loss(rendered, rendered_target)
+        loss = weights['main_loss_weight'] * F.mse_loss(rendered, target_rendered)
         loss += weights['mesh_verts_weight'] * F.mse_loss(verts, target_verts)
         loss += weights['mesh_verts_weight'] * F.mse_loss(verts_uvs, target_verts_uvs)
         loss += weights['mesh_edge_loss_weight'] * mesh_edge_loss(mesh)
