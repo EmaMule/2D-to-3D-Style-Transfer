@@ -44,7 +44,7 @@ parser.add_argument("--mesh_verts_weight", type=float, default=1.0, help="Mesh v
 args = parser.parse_args()
 
 # Parse arguments
-cow_obj_path = args.obj_path
+obj_path = args.obj_path
 style_image_path = args.style_path
 n_views = args.n_views
 epochs = args.epochs
@@ -75,7 +75,7 @@ os.makedirs(output_path+"/current_images", exist_ok=True)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # Load the cow mesh
-original_verts, original_faces, aux = load_obj(cow_obj_path)
+original_verts, original_faces, aux = load_obj(obj_path)
 
 original_verts_uvs = aux.verts_uvs[None, ...].to(device)  # (1, V, 2)
 original_faces_uvs = original_faces.textures_idx[None, ...].to(device)  # (1, F, 3)
@@ -85,7 +85,7 @@ texture_image = list(aux.texture_images.values())[0][None, ...].to(device)  # (1
 original_verts = original_verts.to(device)
 
 # Initialize content textures and mesh
-content_cow_mesh = build_mesh(original_verts_uvs, original_faces_uvs, texture_image, original_verts, original_faces)
+content_mesh = build_mesh(original_verts_uvs, original_faces_uvs, texture_image, original_verts, original_faces)
 
 # Camera, rasterization, and lighting settings
 cameras = FoVPerspectiveCameras(device=device)
@@ -108,10 +108,10 @@ else:
     cameras_list = build_fixed_cameras(n_views)
 
 #initialize optimization based on the target (it returns the mesh to optimize etc.)
-out = setup_optimizations(optimization_target, content_cow_mesh, lr)
+out = setup_optimizations(optimization_target, content_mesh, lr)
 
 #retrieve outputs (done like this for clarity)
-current_cow_mesh = out['optimizable_mesh']
+current_mesh = out['optimizable_mesh']
 optimizer = out['optimizer']
 texture_map = out['texture_map']
 verts = out['verts']
@@ -139,12 +139,12 @@ for epoch in tqdm(range(epochs)):
         style_tensors = load_as_tensor(style_image_path, size=size).repeat(current_batch_size, 1, 1, 1).to(device)
 
         # Render content images for all views
-        content_tensors, content_masks = render_meshes(renderer, content_cow_mesh, batch_cameras)
+        content_tensors, content_masks = render_meshes(renderer, content_mesh, batch_cameras)
         content_tensors = apply_background(content_tensors, content_masks, background_type=content_background, background=style_tensors)
 
         #done because pytorch otherwise cries
-        current_cow_mesh = build_mesh(verts_uvs, faces_uvs, texture_map, verts, faces)
-        current_tensors, current_masks = render_meshes(renderer, current_cow_mesh, batch_cameras)
+        current_mesh = build_mesh(verts_uvs, faces_uvs, texture_map, verts, faces)
+        current_tensors, current_masks = render_meshes(renderer, current_mesh, batch_cameras)
         current_tensors = apply_background(current_tensors, current_masks, background_type=current_background, background=style_tensors)
 
         loss = compute_second_approach_loss(
@@ -156,7 +156,7 @@ for epoch in tqdm(range(epochs)):
             content_weight = content_weight,
             verts = verts,
             target_verts = original_verts,
-            mesh = current_cow_mesh,
+            mesh = current_mesh,
             weights = loss_weights,
             opt_type = optimization_target
         )
@@ -172,9 +172,9 @@ for epoch in tqdm(range(epochs)):
         total_loss += loss.item()
 
 # Ensure texture values are in the correct range
-final_cow_mesh = finalize_mesh(current_cow_mesh)
+final_mesh = finalize_mesh(current_mesh)
 
 # Save final optimized images
 cameras_list = build_fixed_cameras(12)
-save_render(renderer, final_cow_mesh, cameras_list, output_path+"/final_render") # fixed and not random views
-IO().save_mesh(final_cow_mesh, output_path+"/final.obj")
+save_render(renderer, final_mesh, cameras_list, output_path+"/final_render") # fixed and not random views
+IO().save_mesh(final_mesh, output_path+"/final.obj")
