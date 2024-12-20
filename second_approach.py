@@ -6,22 +6,18 @@ import numpy as np
 from PIL import Image
 import math
 import random
+import argparse
 
 # Import style transfer utilities
-from style_transfer import compute_perceptual_loss
-from utils import apply_background, get_vgg, load_as_tensor, tensor_to_image, render_meshes, save_render, finalize_mesh, build_fixed_cameras, build_random_cameras, setup_optimizations, build_mesh
+from style_transfer import *
+from utils import *
 
 from torchvision import transforms
 
 # Import PyTorch3D utilities
-from pytorch3d.io import load_obj
-from pytorch3d.io import IO
+from pytorch3d.io import load_obj, IO
 from pytorch3d.structures import Meshes
 from pytorch3d.renderer import TexturesUV, FoVPerspectiveCameras, RasterizationSettings, MeshRenderer, MeshRasterizer, SoftPhongShader, AmbientLights
-
-from pytorch3d.loss import mesh_edge_loss, mesh_laplacian_smoothing, mesh_normal_consistency
-
-import argparse
 
 # Argument parser
 parser = argparse.ArgumentParser()
@@ -34,17 +30,16 @@ parser.add_argument("--content_weight", default=1.0, type=float, help="Weight of
 parser.add_argument("--size", default=768, type=int, help="Dimension of the images") # (default value is texture resolution)
 parser.add_argument("--output_path", default="/content/output_second", type=str, help="Output folder path")
 parser.add_argument("--batch_size", default=4, type=int, help="Batch size")
-parser.add_argument("--content_background", default='white', type=str, help="Type of background for the content image")
-parser.add_argument("--current_background", default='white', type=str, help="Type of background for the current image")
+parser.add_argument("--content_background", default='white', type=str, choices=['noise', 'style', 'white'], help="Type of background for the content image")
+parser.add_argument("--current_background", default='white', type=str, choices=['noise', 'style', 'white'], help="Type of background for the current image")
 parser.add_argument("--lr", default=0.01, type=float, help="Style Transfer Learning Rate")
 parser.add_argument("--randomize_views", type=bool, default=True, help="Whether or not to randomize views")
-parser.add_argument("--optimization_target", type=str, default="texture", help="Decide what to optimize")
+parser.add_argument("--optimization_target", type=str, choices=['texture', 'mesh', 'both'], default="texture", help="Decide what to optimize")
 parser.add_argument("--main_loss_weight", type=float, default=3.0, help="Weight of the main computed loss (i.e., perceptual)")
 parser.add_argument("--mesh_edge_loss_weight", type=float, default=1.0, help="Weight of edge loss (enforces admissible weights for the edges)")
 parser.add_argument("--mesh_laplacian_smoothing_weight", type=float, default=1.0, help="Weight of smoothing (smooth surface)")
 parser.add_argument("--mesh_normal_consistency_weight", type=float, default=1.0, help="Weight of normal consistency")
 parser.add_argument("--mesh_verts_weight", type=float, default=1.0, help="Mesh verts (uvs and not uvs) regularization weight")
-
 
 args = parser.parse_args()
 
@@ -64,15 +59,14 @@ lr = args.lr
 randomize_views=args.randomize_views
 optimization_target = args.optimization_target
 
-mesh_edge_loss_weight = args.mesh_edge_loss_weight
-mesh_laplacian_smoothing_weight = args.mesh_laplacian_smoothing_weight
-mesh_normal_consistency_weight = args.mesh_normal_consistency_weight
-mesh_verts_weight = args.mesh_verts_weight
-main_loss_weight = args.main_loss_weight
+loss_weights = {
+    'mesh_edge_loss_weight': args.mesh_edge_loss_weight,
+    'mesh_laplacian_smoothing_weight': args.mesh_laplacian_smoothing_weight,
+    'mesh_normal_consistency_weight': args.mesh_normal_consistency_weight,
+    'mesh_verts_weight': args.mesh_verts_weight,
+    'main_loss_weight': args.main_loss_weight
+}
 
-assert content_background in ['noise', 'style', 'white']
-assert current_background in ['noise', 'style', 'white']
-assert optimization_target in ['texture', 'mesh', 'both']
 # Create output folder
 os.makedirs(output_path, exist_ok=True)
 os.makedirs(output_path+"/current_images", exist_ok=True)
@@ -161,21 +155,22 @@ for epoch in tqdm(range(epochs)):
         elif current_background == 'style':
             current_tensors = apply_background(current_tensors, current_masks, style_tensors)
         # else current_background == 'white' does nothing
-        
-        if optimization_target == 'texture':
-            loss = compute_perceptual_loss(current_tensors, content_tensors, style_tensors, vgg, style_weight=style_weight, content_weight=content_weight)
-        elif optimization_target=='mesh':
-            loss =  main_loss_weight*compute_perceptual_loss(current_tensors, content_tensors, style_tensors, vgg, style_weight=style_weight, content_weight=content_weight)
-            loss += mesh_verts_weight*(torch.nn.functional.mse_loss(verts, original_verts) + torch.nn.functional.mse_loss(verts_uvs, original_verts_uvs))
-            loss+= mesh_edge_loss_weight*mesh_edge_loss(current_cow_mesh)
-            loss+= mesh_laplacian_smoothing_weight*mesh_laplacian_smoothing(current_cow_mesh)
-            loss+= mesh_normal_consistency_weight*mesh_normal_consistency(current_cow_mesh)
-        elif optimization_target=='both':
-            loss =  main_loss_weight*compute_perceptual_loss(current_tensors, content_tensors, style_tensors, vgg, style_weight=style_weight, content_weight=content_weight)
-            loss += mesh_verts_weight*(torch.nn.functional.mse_loss(verts, original_verts) + torch.nn.functional.mse_loss(verts_uvs, original_verts_uvs))
-            loss+= mesh_edge_loss_weight*mesh_edge_loss(current_cow_mesh)
-            loss+= mesh_laplacian_smoothing_weight*mesh_laplacian_smoothing(current_cow_mesh)
-            loss+= mesh_normal_consistency_weight*mesh_normal_consistency(current_cow_mesh)
+
+        loss = compute_second_approach_loss(
+            current = current_tensors,
+            content = content_tensorsm,
+            style = style_tensors,
+            model = vgg,
+            style_weight = style_weight,
+            content_weight = content_weight,
+            verts = verts,
+            target_verts = original_verts,
+            verts_uvs = verts_uvs,
+            target_verts_uvs = original_verts_uvs,
+            mesh = current_cow_mesh,
+            weights = loss_weights,
+            opt_type = optimization_target
+        )
 
         # Save styled images
         for j, current_tensor in enumerate(current_tensors):

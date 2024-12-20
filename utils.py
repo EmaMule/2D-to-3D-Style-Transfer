@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch.nn import functional as F
 from torchvision import transforms, models
 from PIL import Image
 import os
@@ -91,7 +92,7 @@ def finalize_mesh(mesh):
     verts = mesh.verts_padded()  # Access the vertices
     faces = mesh.faces_padded()  # Access the faces
 
-    # Finalize the texture
+    # Finalize the texture (ensure colors in range (0,1) )
     final_texture_map = torch.clamp(texture_map, 0.0, 1.0)
 
     # Build the final textures
@@ -190,7 +191,61 @@ def setup_optimizations(optimization_target, mesh, lr):
             'faces_uvs': faces_uvs
             }
 
+
 def build_mesh(verts_uvs, faces_uvs, texture_map, verts, faces):
     textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=texture_map)
     mesh = Meshes(verts=[verts], faces=[faces], textures=textures)
     return mesh
+
+
+def compute_first_approach_loss(rendered, masks, rendered_target, verts, target_verts, verts_uvs, target_verts_uvs, mesh, weights, opt_type):
+
+    # Compute masked MSE loss for all views in batch
+    rendered = rendered * masks  # Shape: [batch_size, C, H, W]
+    rendered_target = rendered_target * masks  # Shape: [batch_size, C, H, W]
+
+    if opt_type == 'texture':
+        loss = F.mse_loss(masked_rendered, masked_target) #loss weight ignored (no interest)
+    
+    # add mesh optimization loss terms
+    elif opt_type == 'mesh':
+        loss = weights['main_loss_weight'] * F.mse_loss(masked_rendered, masked_target)
+        loss += weights['mesh_verts_weight'] * F.mse_loss(verts, original_verts)
+        loss += weights['mesh_verts_weight'] * F.mse_loss(verts_uvs, original_verts_uvs)
+        loss += weights['mesh_edge_loss_weight'] * mesh_edge_loss(mesh)
+        loss += weights['mesh_laplacian_smoothing_weight'] * mesh_laplacian_smoothing(mesh)
+        loss += weights['mesh_normal_consistency_weight'] * mesh_normal_consistency(mesh)
+    
+    elif opt_type == 'both':
+        loss = weights['main_loss_weight'] * F.mse_loss(masked_rendered, masked_target)
+        loss += weights['mesh_verts_weight'] * F.mse_loss(verts, original_verts)
+        loss += weights['mesh_verts_weight'] * F.mse_loss(verts_uvs, original_verts_uvs)
+        loss += weights['mesh_edge_loss_weight'] * mesh_edge_loss(mesh)
+        loss += weights['mesh_laplacian_smoothing_weight'] * mesh_laplacian_smoothing(mesh)
+        loss += weights['mesh_normal_consistency_weight'] * mesh_normal_consistency(mesh)
+    
+    return loss
+
+
+def compute_second_approach_loss(current, content, style, model, style_weight, content_weight, verts, target_verts, verts_uvs, target_verts_uvs, mesh, weights, opt_type):
+
+    if opt_type == 'texture':
+        loss = compute_perceptual_loss(current, content, style, model, style_weight=style_weight, content_weight=content_weight)
+
+    elif opt_type=='mesh':
+        loss =  weights['main_loss_weight'] * compute_perceptual_loss(current, content, style, model, style_weight=style_weight, content_weight=content_weight)
+        loss += weights['mesh_verts_weight'] * F.mse_loss(verts, target_verts) 
+        loss += weights['mesh_verts_weight'] * F.mse_loss(verts_uvs, target_verts_uvs)
+        loss += weights['mesh_edge_loss_weight'] * mesh_edge_loss(mesh)
+        loss += weights['mesh_laplacian_smoothing_weight'] * mesh_laplacian_smoothing(mesh)
+        loss += weights['mesh_normal_consistency_weight'] * mesh_normal_consistency(mesh)
+
+    elif opt_type=='both':
+        loss =  weights['main_loss_weight'] * compute_perceptual_loss(current, content, style, model, style_weight=style_weight, content_weight=content_weight)
+        loss += weights['mesh_verts_weight'] * F.mse_loss(verts, target_verts)
+        loss += weights['mesh_verts_weight'] * F.mse_loss(verts_uvs, target_verts_uvs)
+        loss += weights['mesh_edge_loss_weight'] * mesh_edge_loss(mesh)
+        loss += weights['mesh_laplacian_smoothing_weight'] * mesh_laplacian_smoothing(mesh)
+        loss += weights['mesh_normal_consistency_weight'] * mesh_normal_consistency(mesh)
+    
+    return loss
