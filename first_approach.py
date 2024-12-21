@@ -93,7 +93,16 @@ original_faces = original_faces.verts_idx.to(device) #notice I'm overwriting the
 texture_image = list(aux.texture_images.values())[0][None, ...].to(device)  # (1, H, W, 3)
 
 if resize_texture:
-    texture_image = F.interpolate(texture_image,size=size,mode='bilinear',align_corners=False)
+  texture_image = texture_image.permute(0, 3, 1, 2)  # Shape: (1, 3, H, W)
+  # Resize the texture
+  texture_image = F.interpolate(
+      texture_image, 
+      size=size, 
+      mode='bilinear', 
+      align_corners=False
+  )
+  # Permute back to NHWC format
+  texture_image = texture_image.permute(0, 2, 3, 1)  # Shape: (1, H, W, 3)
 
 
 original_verts = original_verts.to(device)
