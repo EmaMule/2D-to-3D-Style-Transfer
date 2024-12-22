@@ -114,7 +114,7 @@ def finalize_mesh(mesh):
 
 
 def finalize_tensor(tensor):
-    final_tensor = torch.clamp(tensor, 0.0, 1.0)
+    final_tensor = torch.clamp(tensor, 0.0, 1.0).detach()
     return final_tensor
 
 
