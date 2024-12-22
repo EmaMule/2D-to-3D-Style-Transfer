@@ -1,5 +1,4 @@
 import torch
-import torch.nn as nn
 from torch.nn import functional as F
 from torchvision import transforms, models
 from PIL import Image
@@ -11,7 +10,6 @@ from pytorch3d.renderer.cameras import look_at_view_transform
 import random
 
 from style_transfer import *
-from pytorch3d.loss import mesh_edge_loss, mesh_laplacian_smoothing, mesh_normal_consistency
 
 # Check if CUDA is available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -104,7 +102,7 @@ def finalize_mesh(mesh):
     faces = mesh.faces_padded()  # Access the faces
 
     # Finalize the texture (ensure colors in range (0,1) )
-    final_texture_map = torch.clamp(texture_map, 0.0, 1.0)
+    final_texture_map = finalize_tensor(texture_map)
 
     # Build the final textures
     current_textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=final_texture_map)
@@ -113,6 +111,11 @@ def finalize_mesh(mesh):
     final_mesh = Meshes(verts=verts, faces=faces, textures=current_textures)
 
     return final_mesh
+
+
+def finalize_tensor(tensor):
+    final_tensor = torch.clamp(tensor, 0.0, 1.0)
+    return final_tensor
 
 
 def build_fixed_cameras(n_views, dist=3.0, shuffle = True):
@@ -206,52 +209,3 @@ def build_mesh(verts_uvs, faces_uvs, texture_map, verts, faces):
     textures = TexturesUV(verts_uvs=verts_uvs, faces_uvs=faces_uvs, maps=texture_map)
     mesh = Meshes(verts=[verts], faces=[faces], textures=textures)
     return mesh
-
-
-def compute_first_approach_loss(rendered, masks, target_rendered, verts, target_verts, mesh, weights, opt_type):
-
-    # Compute masked MSE loss for all views in batch
-    rendered = rendered * masks  # Shape: [batch_size, C, H, W]
-    target_rendered = target_rendered * masks  # Shape: [batch_size, C, H, W]
-
-    if opt_type == 'texture':
-        loss = F.mse_loss(rendered, target_rendered) #loss weight ignored (no interest)
-    
-    # add mesh optimization loss terms
-    elif opt_type == 'mesh':
-        loss = weights['main_loss_weight'] * F.mse_loss(rendered, target_rendered)
-        loss += weights['mesh_verts_weight'] * F.mse_loss(verts, target_verts)
-        loss += weights['mesh_edge_loss_weight'] * mesh_edge_loss(mesh)
-        loss += weights['mesh_laplacian_smoothing_weight'] * mesh_laplacian_smoothing(mesh)
-        loss += weights['mesh_normal_consistency_weight'] * mesh_normal_consistency(mesh)
-    
-    elif opt_type == 'both':
-        loss = weights['main_loss_weight'] * F.mse_loss(rendered, target_rendered)
-        loss += weights['mesh_verts_weight'] * F.mse_loss(verts, target_verts)
-        loss += weights['mesh_edge_loss_weight'] * mesh_edge_loss(mesh)
-        loss += weights['mesh_laplacian_smoothing_weight'] * mesh_laplacian_smoothing(mesh)
-        loss += weights['mesh_normal_consistency_weight'] * mesh_normal_consistency(mesh)
-    
-    return loss
-
-
-def compute_second_approach_loss(current, content, style, model, style_weight, content_weight, verts, target_verts, mesh, weights, opt_type):
-
-    if opt_type == 'texture':
-        loss = compute_perceptual_loss(current, content, style, model, style_weight=style_weight, content_weight=content_weight)
-
-    elif opt_type=='mesh':
-        loss =  weights['main_loss_weight'] * compute_perceptual_loss(current, content, style, model, style_weight=style_weight, content_weight=content_weight)
-        loss += weights['mesh_verts_weight'] * F.mse_loss(verts, target_verts) 
-        loss += weights['mesh_edge_loss_weight'] * mesh_edge_loss(mesh)
-        loss += weights['mesh_laplacian_smoothing_weight'] * mesh_laplacian_smoothing(mesh)
-        loss += weights['mesh_normal_consistency_weight'] * mesh_normal_consistency(mesh)
-
-    elif opt_type=='both':
-        loss =  weights['main_loss_weight'] * compute_perceptual_loss(current, content, style, model, style_weight=style_weight, content_weight=content_weight)
-        loss += weights['mesh_verts_weight'] * F.mse_loss(verts, target_verts)
-        loss += weights['mesh_edge_loss_weight'] * mesh_edge_loss(mesh)
-        loss += weights['mesh_laplacian_smoothing_weight'] * mesh_laplacian_smoothing(mesh)
-        loss += weights['mesh_normal_consistency_weight'] * mesh_normal_consistency(mesh)
-    
-    return loss
