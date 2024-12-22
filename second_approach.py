@@ -131,6 +131,10 @@ verts_uvs = out['verts_uvs']
 faces_uvs = out['faces_uvs']
 
 # USE TWO CURRENT: ONE ALWAYS WITH STYLE AND ONE WITH THE SAME AS CONTENT
+# Logging
+with open(output_path + '/log.txt', 'w') as file:
+    file.write('Logger:\n')
+
 print("Starting optimization...")
 total_loss = 0
 for epoch in range(epochs):
