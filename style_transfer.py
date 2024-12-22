@@ -2,7 +2,6 @@ import torch
 import torch.optim as optim
 from tqdm import tqdm
 
-
 # Check if CUDA is available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -57,7 +56,7 @@ def style_transfer(initial_optimized_imgs, content_imgs, style_imgs, model, step
     # Define optimizer
     optimizer = optim.Adam([optimized_imgs], lr=lr)
 
-    for step in tqdm(range(steps)):
+    for step in tqdm(range(steps), leave=False, desc="2D Style Transfer"):
 
         # Extract features for current target batch
         optimized_imgs_features = get_features(optimized_imgs, model)
