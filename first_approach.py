@@ -185,7 +185,8 @@ for i in tqdm(range(math.ceil(n_views / batch_size)), desc="First Approach"):
         applied_style_image.save(output_path + f"/2d_style_transfer/view_{i*batch_size+j}.png")
 
     # Optimize the texture map in batches
-    for step in tqdm(range(n_mse_steps), leave=False, desc="Optimizing w.r.t. Applied Style Transfer"):
+    loss_value = 0
+    for step in tqdm(range(n_mse_steps), leave=False, desc="Optimizing w.r.t. Applied Style Transfer", postfix=loss_value):
         optimizer.zero_grad()
 
         # Done because pytorch otherwise cries
@@ -207,10 +208,11 @@ for i in tqdm(range(math.ceil(n_views / batch_size)), desc="First Approach"):
         # Backpropagation
         loss.backward()
         optimizer.step()
+        loss_value = loss.item()
 
         # Logging
         with open(output_path + '/log.txt', 'a') as file:
-            file.write(f'Batch {i}, Step {step}, Loss {loss.item()}\n')
+            file.write(f'Batch {i}, Step {step}, Loss {loss_value}\n')
 
 # Ensure texture values are in the correct range
 final_mesh = finalize_mesh(current_mesh)
