@@ -56,7 +56,7 @@ def style_transfer(initial_optimized_imgs, content_imgs, style_imgs, model, step
     # Define optimizer
     optimizer = optim.Adam([optimized_imgs], lr=lr)
 
-    for step in tqdm(range(steps), leave=False, desc="2D Style Transfer"):
+    for step in tqdm(range(steps), desc="2D Style Transfer"):
 
         # Extract features for current target batch
         optimized_imgs_features = get_features(optimized_imgs, model)

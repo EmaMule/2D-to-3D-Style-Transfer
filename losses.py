@@ -44,6 +44,7 @@ def compute_perceptual_loss(current_imgs, content_imgs, style_imgs, model, style
     return total_loss
 
 
+# doesn't bring better results if the clipping is done correctly
 def rgb_range_loss(mesh):
     texture = mesh.textures.maps_padded()
     loss = torch.sum(torch.relu(texture - 1) + torch.relu(-texture))
@@ -58,7 +59,7 @@ def compute_first_approach_loss(rendered, masks, target_rendered, verts, target_
 
     if opt_type == 'texture':
         loss = F.mse_loss(rendered, target_rendered) #loss weight ignored (no interest)
-        loss += rgb_range_loss(mesh)
+        # loss += rgb_range_loss(mesh)
     
     # add mesh optimization loss terms
     elif opt_type == 'mesh':
@@ -67,7 +68,7 @@ def compute_first_approach_loss(rendered, masks, target_rendered, verts, target_
         loss += weights['mesh_edge_loss_weight'] * mesh_edge_loss(mesh)
         loss += weights['mesh_laplacian_smoothing_weight'] * mesh_laplacian_smoothing(mesh)
         loss += weights['mesh_normal_consistency_weight'] * mesh_normal_consistency(mesh)
-        loss += ... * rgb_range_loss(mesh)
+        # loss += rgb_range_loss(mesh)
     
     elif opt_type == 'both':
         loss = weights['main_loss_weight'] * F.mse_loss(rendered, target_rendered)
@@ -75,7 +76,7 @@ def compute_first_approach_loss(rendered, masks, target_rendered, verts, target_
         loss += weights['mesh_edge_loss_weight'] * mesh_edge_loss(mesh)
         loss += weights['mesh_laplacian_smoothing_weight'] * mesh_laplacian_smoothing(mesh)
         loss += weights['mesh_normal_consistency_weight'] * mesh_normal_consistency(mesh)
-        loss += ... * rgb_range_loss(mesh)
+        # loss += rgb_range_loss(mesh)
     
     return loss
 

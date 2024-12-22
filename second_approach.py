@@ -133,10 +133,12 @@ faces_uvs = out['faces_uvs']
 # USE TWO CURRENT: ONE ALWAYS WITH STYLE AND ONE WITH THE SAME AS CONTENT
 print("Starting optimization...")
 total_loss = 0
-for epoch in tqdm(range(epochs), desc="Second Approach", postfix=total_loss):
+for epoch in range(epochs):
+
+    print(f"\nEpoch {epoch}")
 
     total_loss = 0
-    for i in tqdm(range(math.ceil(n_views / batch_size)), leave=False, desc="Batch"):
+    for i in tqdm(range(math.ceil(n_views / batch_size)), leave=True, desc="Batch"):
 
         optimizer.zero_grad()
         batch_start = i*batch_size

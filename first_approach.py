@@ -144,7 +144,9 @@ with open(output_path + '/log.txt', 'w') as file:
     file.write('Logger:\n')
 
 print("Starting optimization...")
-for i in tqdm(range(math.ceil(n_views / batch_size)), desc="First Approach"):
+for i in range(math.ceil(n_views / batch_size)):
+
+    print(f"\nBatch {i}")
 
     batch_start = i*batch_size
     batch_end = min((i+1)*batch_size, n_views)
@@ -186,7 +188,7 @@ for i in tqdm(range(math.ceil(n_views / batch_size)), desc="First Approach"):
 
     # Optimize the texture map in batches
     loss_value = 0
-    for step in tqdm(range(n_mse_steps), leave=False, desc="Optimizing w.r.t. Applied Style Transfer", postfix=loss_value):
+    for step in tqdm(range(n_mse_steps), desc="Optimizing", postfix=loss_value):
         optimizer.zero_grad()
 
         # Done because pytorch otherwise cries
