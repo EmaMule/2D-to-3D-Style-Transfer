@@ -1,25 +1,22 @@
 import torch
-import matplotlib.pyplot as plt
+import torch.nn.functional as F
 from tqdm import tqdm
 import os
 import numpy as np
-from PIL import Image
 import math
-import random
 import argparse
 
 # Import style transfer utilities
 from style_transfer import *
 from utils import *
-
-from torchvision import transforms as T
-
-import torch.nn.functional as F
+from losses import *
 
 # Import PyTorch3D utilities
 from pytorch3d.io import load_obj, IO
-from pytorch3d.structures import Meshes
-from pytorch3d.renderer import TexturesUV, FoVPerspectiveCameras, RasterizationSettings, MeshRenderer, MeshRasterizer, SoftPhongShader, AmbientLights
+from pytorch3d.renderer import FoVPerspectiveCameras, RasterizationSettings, MeshRenderer, MeshRasterizer, SoftPhongShader, AmbientLights
+
+# Set device (use GPU if available)
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # Argument parser
 parser = argparse.ArgumentParser()
@@ -81,12 +78,10 @@ loss_weights = {
 os.makedirs(output_path, exist_ok=True)
 os.makedirs(output_path+"/2d_style_transfer", exist_ok=True)
 
-# Set device (use GPU if available)
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-# Load the cow mesh
+# Loading mesh
+print("Loading mesh...")
 original_verts, original_faces, aux = load_obj(obj_path)
-
+original_verts = original_verts.to(device)
 original_verts_uvs = aux.verts_uvs[None, ...].to(device)  # (1, V, 2)
 original_faces_uvs = original_faces.textures_idx[None, ...].to(device)  # (1, F, 3)
 original_faces = original_faces.verts_idx.to(device) #notice I'm overwriting the variable (it is not used in any case)
@@ -104,9 +99,6 @@ if resize_texture:
   # Permute back to NHWC format
   texture_image = texture_image.permute(0, 2, 3, 1)  # Shape: (1, H, W, 3)
 
-
-original_verts = original_verts.to(device)
-
 # Initialize content textures and mesh
 content_mesh = build_mesh(original_verts_uvs, original_faces_uvs, texture_image, original_verts, original_faces)
 
@@ -122,16 +114,18 @@ renderer = MeshRenderer(
 )
 
 # Load VGG model
+print("Loading model...")
 vgg = get_vgg()
 
 # Build cameras
+print("Building cameras...")
 if randomize_views:
     cameras_list = build_random_cameras(n_views)
 else:
     cameras_list = build_fixed_cameras(n_views)
 
-#RIVEDERE CON MATTEO: SI PUO FARE DI MEGLIO?
-#initialize optimization based on the target (it returns the mesh to optimize etc.)
+# RIVEDERE CON MATTEO: SI PUO FARE DI MEGLIO?
+# initialize optimization based on the target (it returns the mesh to optimize etc.)
 out = setup_optimizations(optimization_target, content_mesh, mse_lr)
 
 #retrieve outputs (done like this for clarity)
@@ -145,15 +139,14 @@ faces_uvs = out['faces_uvs']
 
 # SHOULD COMPUTE ALL 2D TRANSFORM FIRST AND THEN LEARN WITH BATCHES FOR A FEW ITERATIONS?
 
-for i in range(math.ceil(n_views / batch_size)):
-
-    print(f"Batch {i+1} of {math.ceil(n_views / batch_size)}")
+print("Starting optimization...")
+for i in tdqm(range(math.ceil(n_views / batch_size))):
 
     batch_start = i*batch_size
     batch_end = min((i+1)*batch_size, n_views)
     current_batch_size = batch_end - batch_start
 
-    # sample cameras (shuffling is done in the angles, they can be taken in order)
+    # Sample cameras (shuffling is done in the angles, they can be taken in order)
     batch_indexes = list(range(batch_start, batch_end))
     batch_cameras = [cameras_list[idx] for idx in batch_indexes]
 
@@ -179,6 +172,9 @@ for i in range(math.ceil(n_views / batch_size)):
     applied_style_tensors = style_transfer(applied_style_tensors, content_tensors, style_tensors, vgg, steps=n_style_transfer_steps,
                                     style_weight=style_weight, content_weight=content_weight, lr=style_transfer_lr)
 
+    # the produced values may be outside the range (0,1)
+    applied_style_tensors = finalize_tensor(applied_style_tensors)
+
     # Save styled images
     for j, applied_style_tensor in enumerate(applied_style_tensors):
         applied_style_image = tensor_to_image(applied_style_tensor)
@@ -188,7 +184,7 @@ for i in range(math.ceil(n_views / batch_size)):
     for step in range(n_mse_steps):
         optimizer.zero_grad()
 
-        #done because pytorch otherwise cries
+        # Done because pytorch otherwise cries
         current_mesh = build_mesh(verts_uvs, faces_uvs, texture_map, verts, faces)
 
         rendered_tensors, object_masks = render_meshes(renderer, current_mesh, batch_cameras)
@@ -208,7 +204,9 @@ for i in range(math.ceil(n_views / batch_size)):
         loss.backward()
         optimizer.step()
 
-        print(f"Step {step}, Loss: {loss.item()}")
+        # Logging
+        with open(output_path + '/log.txt', 'a') as file:
+            file.write(f'Batch {i}, Step {step}, Loss {loss.item()}\n')
 
 # Ensure texture values are in the correct range
 final_mesh = finalize_mesh(current_mesh)

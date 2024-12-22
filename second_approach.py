@@ -1,25 +1,22 @@
 import torch
-import matplotlib.pyplot as plt
+import torch.nn.functional as F
 from tqdm import tqdm
 import os
 import numpy as np
-from PIL import Image
 import math
-import random
 import argparse
 
 # Import style transfer utilities
 from style_transfer import *
 from utils import *
-
-from torchvision import transforms
-
-import torch.nn.functional as F
+from losses import *
 
 # Import PyTorch3D utilities
 from pytorch3d.io import load_obj, IO
-from pytorch3d.structures import Meshes
-from pytorch3d.renderer import TexturesUV, FoVPerspectiveCameras, RasterizationSettings, MeshRenderer, MeshRasterizer, SoftPhongShader, AmbientLights
+from pytorch3d.renderer import FoVPerspectiveCameras, RasterizationSettings, MeshRenderer, MeshRasterizer, SoftPhongShader, AmbientLights
+
+# Set device (use GPU if available)
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 # Argument parser
 parser = argparse.ArgumentParser()
@@ -75,12 +72,10 @@ loss_weights = {
 os.makedirs(output_path, exist_ok=True)
 os.makedirs(output_path+"/current_images", exist_ok=True)
 
-# Set device (use GPU if available)
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-# Load the cow mesh
+# Load mesh
+print("Loading mesh...")
 original_verts, original_faces, aux = load_obj(obj_path)
-
+original_verts = original_verts.to(device)
 original_verts_uvs = aux.verts_uvs[None, ...].to(device)  # (1, V, 2)
 original_faces_uvs = original_faces.textures_idx[None, ...].to(device)  # (1, F, 3)
 original_faces = original_faces.verts_idx.to(device)
@@ -97,7 +92,6 @@ if resize_texture:
   )
   # Permute back to NHWC format
   texture_image = texture_image.permute(0, 2, 3, 1)  # Shape: (1, H, W, 3)
-original_verts = original_verts.to(device)
 
 # Initialize content textures and mesh
 content_mesh = build_mesh(original_verts_uvs, original_faces_uvs, texture_image, original_verts, original_faces)
@@ -114,9 +108,11 @@ renderer = MeshRenderer(
 )
 
 # Load VGG model
+print("Loading model...")
 vgg = get_vgg()
 
 # Build cameras
+print("Building cameras...")
 if randomize_views:
     cameras_list = build_random_cameras(n_views)
 else:
@@ -135,6 +131,7 @@ verts_uvs = out['verts_uvs']
 faces_uvs = out['faces_uvs']
 
 # USE TWO CURRENT: ONE ALWAYS WITH STYLE AND ONE WITH THE SAME AS CONTENT
+print("Starting optimization...")
 for epoch in tqdm(range(epochs)):
 
     total_loss = 0
@@ -185,6 +182,10 @@ for epoch in tqdm(range(epochs)):
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
+
+    # Logging
+    with open(output_path + '/log.txt', 'a') as file:
+        file.write(f'Epoch {epoch}, Loss {total_loss}\n')
 
 # Ensure texture values are in the correct range
 final_mesh = finalize_mesh(current_mesh)
