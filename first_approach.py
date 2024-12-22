@@ -139,8 +139,12 @@ faces_uvs = out['faces_uvs']
 
 # SHOULD COMPUTE ALL 2D TRANSFORM FIRST AND THEN LEARN WITH BATCHES FOR A FEW ITERATIONS?
 
+# Logging
+with open(output_path + '/log.txt', 'w') as file:
+    file.write('Logger:\n')
+
 print("Starting optimization...")
-for i in tdqm(range(math.ceil(n_views / batch_size))):
+for i in tqdm(range(math.ceil(n_views / batch_size)), desc="First Approach"):
 
     batch_start = i*batch_size
     batch_end = min((i+1)*batch_size, n_views)
@@ -181,7 +185,7 @@ for i in tdqm(range(math.ceil(n_views / batch_size))):
         applied_style_image.save(output_path + f"/2d_style_transfer/view_{i*batch_size+j}.png")
 
     # Optimize the texture map in batches
-    for step in range(n_mse_steps):
+    for step in tqdm(range(n_mse_steps), leave=False, desc="Optimizing w.r.t. Applied Style Transfer"):
         optimizer.zero_grad()
 
         # Done because pytorch otherwise cries
