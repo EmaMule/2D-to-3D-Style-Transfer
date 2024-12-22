@@ -24,6 +24,13 @@ transfered to the texture make it "not homogeneous"
 
 ---
 
+Check: https://github.com/abhisheklalwani/3DStyleTransfer/blob/master/style_transfer_3d-master/examples/run.py#L63
+
+Nothing works, but it has some good ideas. Different learning rates for the optimizer, build gif for the object (check pytorch3d)
+check back normalization, try TV loss
+
+---
+
 TODO:
 
 -) use 2 "current" in 2° approach
