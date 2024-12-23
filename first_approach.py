@@ -43,6 +43,7 @@ parser.add_argument("--mesh_edge_loss_weight", type=float, default=1.0, help="We
 parser.add_argument("--mesh_laplacian_smoothing_weight", type=float, default=1.0, help="Weight of smoothing (smooth surface)")
 parser.add_argument("--mesh_normal_consistency_weight", type=float, default=1.0, help="Weight of normal consistency")
 parser.add_argument("--mesh_verts_weight", type=float, default=1.0, help="Mesh verts (uvs and not uvs) regularization weight")
+parser.add_argument("--tv_weight", type=float, default=1.0, help="Total variation loss weight")
 
 args = parser.parse_args()
 
@@ -71,7 +72,8 @@ loss_weights = {
     'mesh_laplacian_smoothing_weight': args.mesh_laplacian_smoothing_weight,
     'mesh_normal_consistency_weight': args.mesh_normal_consistency_weight,
     'mesh_verts_weight': args.mesh_verts_weight,
-    'main_loss_weight': args.main_loss_weight
+    'main_loss_weight': args.main_loss_weight,
+    'tv_weight': args.tv_weight
 }
 
 # Create output folder
