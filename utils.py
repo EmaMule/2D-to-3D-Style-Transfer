@@ -153,11 +153,10 @@ def build_fixed_cameras(n_views, dist=3.0, shuffle = True):
 
 def build_random_cameras(n_views, dist=2.10):
 
-    elev_range = (0, 360)
-    azim_range = (-180, 180)
+    cos_elevs = torch.rand(n_views) * 2 - 1
+    elevs = torch.acos(cos_elevs) * 180 / torch.pi - 90 
     
-    elevs = torch.rand(n_views) * (elev_range[1] - elev_range[0]) + elev_range[0]
-    azims = torch.rand(n_views) * (azim_range[1] - azim_range[0]) + azim_range[0]
+    azims = torch.rand(n_views) * 360 - 180
 
     R_list, T_list = look_at_view_transform(
         dist = dist,
