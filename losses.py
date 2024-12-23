@@ -74,13 +74,13 @@ def compute_first_approach_loss(rendered, masks, target_rendered, verts, target_
 
     if opt_type == 'texture':
         loss = F.mse_loss(rendered, target_rendered) #loss weight ignored (no interest)
-        loss += weights['tv_loss'] * compute_tv_loss(rendered, masks)
+        loss += weights['tv_weight'] * compute_tv_loss(rendered, masks)
         # loss += rgb_range_loss(mesh)
     
     # add mesh optimization loss terms
     elif opt_type == 'mesh':
         loss = weights['main_loss_weight'] * F.mse_loss(rendered, target_rendered)
-        loss += weights['tv_loss'] * compute_tv_loss(rendered, masks)
+        loss += weights['tv_weight'] * compute_tv_loss(rendered, masks)
         loss += weights['mesh_verts_weight'] * F.mse_loss(verts, target_verts)
         loss += weights['mesh_edge_loss_weight'] * mesh_edge_loss(mesh)
         loss += weights['mesh_laplacian_smoothing_weight'] * mesh_laplacian_smoothing(mesh)
@@ -89,7 +89,7 @@ def compute_first_approach_loss(rendered, masks, target_rendered, verts, target_
     
     elif opt_type == 'both':
         loss = weights['main_loss_weight'] * F.mse_loss(rendered, target_rendered)
-        loss += weights['tv_loss'] * compute_tv_loss(rendered, masks)
+        loss += weights['tv_weight'] * compute_tv_loss(rendered, masks)
         loss += weights['mesh_verts_weight'] * F.mse_loss(verts, target_verts)
         loss += weights['mesh_edge_loss_weight'] * mesh_edge_loss(mesh)
         loss += weights['mesh_laplacian_smoothing_weight'] * mesh_laplacian_smoothing(mesh)
@@ -103,9 +103,11 @@ def compute_second_approach_loss(current, content, style, model, style_weight, c
 
     if opt_type == 'texture':
         loss = compute_perceptual_loss(current, content, style, model, style_weight=style_weight, content_weight=content_weight)
+        loss += weights['tv_weight'] * compute_tv_loss(rendered, masks)
 
     elif opt_type=='mesh':
         loss =  weights['main_loss_weight'] * compute_perceptual_loss(current, content, style, model, style_weight=style_weight, content_weight=content_weight)
+        loss += weights['tv_weight'] * compute_tv_loss(rendered, masks)
         loss += weights['mesh_verts_weight'] * F.mse_loss(verts, target_verts) 
         loss += weights['mesh_edge_loss_weight'] * mesh_edge_loss(mesh)
         loss += weights['mesh_laplacian_smoothing_weight'] * mesh_laplacian_smoothing(mesh)
@@ -113,6 +115,7 @@ def compute_second_approach_loss(current, content, style, model, style_weight, c
 
     elif opt_type=='both':
         loss =  weights['main_loss_weight'] * compute_perceptual_loss(current, content, style, model, style_weight=style_weight, content_weight=content_weight)
+        loss += weights['tv_weight'] * compute_tv_loss(rendered, masks)
         loss += weights['mesh_verts_weight'] * F.mse_loss(verts, target_verts)
         loss += weights['mesh_edge_loss_weight'] * mesh_edge_loss(mesh)
         loss += weights['mesh_laplacian_smoothing_weight'] * mesh_laplacian_smoothing(mesh)
