@@ -34,9 +34,6 @@ check back normalization, try TV loss
 TODO:
 
 -) use 2 "current" in 2° approach
--) check burning in 2° approach --> multiple views seem to mitigate the problem
 -) check material roughness?
--) add geometry optimization: remember to use several losses (regularizers)
 -) try "3° approach": do little steps on the texture using 1° approach with many camera views
 -) try l2 regularization w.r.t. the original texture?
--) to rework the if-else portions in the main--> move them in utils for clarity
