@@ -63,7 +63,9 @@ def compute_tv_loss(images, masks):
 
     # Compute TV loss using masked differences
     # SHOULD TRY WITH SQUARE INSTEAD OF ABS
-    tv_loss = (torch.sum(torch.abs(diff_h) * mask_h) + torch.sum(torch.abs(diff_w) * mask_w)) / torch.sum(masks)
+    loss = (torch.sum(torch.abs(diff_h) * mask_h) + torch.sum(torch.abs(diff_w) * mask_w)) / torch.sum(masks)
+
+    return loss
 
 
 def compute_first_approach_loss(rendered, masks, target_rendered, verts, target_verts, mesh, weights, opt_type):
